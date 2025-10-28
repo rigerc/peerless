@@ -1,124 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/urfave/cli/v3"
+	"go-tneat/pkg/client"
+	"go-tneat/pkg/types"
+	"go-tneat/pkg/utils"
 )
-
-type TransmissionRequest struct {
-	Method    string                 `json:"method"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-}
-
-type TorrentInfo struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	DownloadDir string `json:"downloadDir"`
-	HashString  string `json:"hashString"`
-}
-
-type TorrentFile struct {
-	Name   string `json:"name"`
-	Length int64  `json:"length"`
-}
-
-type TorrentDetailedInfo struct {
-	ID          int           `json:"id"`
-	Name        string        `json:"name"`
-	DownloadDir string        `json:"downloadDir"`
-	HashString  string        `json:"hashString"`
-	Files       []TorrentFile `json:"files"`
-}
-
-type TransmissionResponse struct {
-	Arguments struct {
-		Torrents []TorrentInfo `json:"torrents"`
-	} `json:"arguments"`
-	Result string `json:"result"`
-}
-
-type TransmissionDetailedResponse struct {
-	Arguments struct {
-		Torrents []TorrentDetailedInfo `json:"torrents"`
-	} `json:"arguments"`
-	Result string `json:"result"`
-}
-
-type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Dirs     []string
-}
-
-func getSize(path string) (int64, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-
-	if !info.IsDir() {
-		return info.Size(), nil
-	}
-
-	// For directories, calculate total size recursively
-	var totalSize int64
-	err = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors, continue walking
-		}
-		if !info.IsDir() {
-			totalSize += info.Size()
-		}
-		return nil
-	})
-
-	return totalSize, err
-}
-
-func formatSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	
-	units := []string{"KB", "MB", "GB", "TB", "PB"}
-	return fmt.Sprintf("%.2f %s", float64(bytes)/float64(div), units[exp])
-}
-
-func writeMissingPaths(filename string, paths []string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	for _, path := range paths {
-		_, err := file.WriteString(path + "\n")
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
 
 func main() {
 	app := &cli.Command{
@@ -169,7 +62,7 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg := Config{
+			cfg := types.Config{
 				Host:     cmd.String("host"),
 				Port:     cmd.Int("port"),
 				User:     cmd.String("user"),
@@ -181,15 +74,18 @@ func main() {
 			getAllTorrents := cmd.Bool("get-all-torrents")
 			outputFile := cmd.String("output")
 
+			// Create Transmission client
+			client := client.NewTransmissionClient(cfg)
+
 			// Get session ID
-			sessionID, err := getSessionID(cfg)
+			sessionID, err := client.GetSessionID()
 			if err != nil {
 				return fmt.Errorf("error getting session ID: %w", err)
 			}
 
 			// If get-directories flag is set, just list directories and exit
 			if getDirs {
-				err := listDownloadDirectories(cfg, sessionID)
+				err := client.ListDownloadDirectories(sessionID)
 				if err != nil {
 					return fmt.Errorf("error listing directories: %w", err)
 				}
@@ -198,7 +94,7 @@ func main() {
 
 			// If get-all-torrents flag is set, output all torrent paths and exit
 			if getAllTorrents {
-				paths, err := getAllTorrentPaths(cfg, sessionID)
+				paths, err := client.GetAllTorrentPaths(sessionID)
 				if err != nil {
 					return fmt.Errorf("error getting all torrent paths: %w", err)
 				}
@@ -216,7 +112,7 @@ func main() {
 			}
 
 			// Get all torrents from Transmission
-			torrents, err := getTorrents(cfg, sessionID)
+			torrents, err := client.GetTorrents(sessionID)
 			if err != nil {
 				return fmt.Errorf("error getting torrents: %w", err)
 			}
@@ -279,7 +175,7 @@ func main() {
 						}
 						missingPaths = append(missingPaths, absPath)
 
-						size, err := getSize(fullPath)
+						size, err := utils.GetSize(fullPath)
 						if err == nil {
 							missingSize += size
 						}
@@ -291,7 +187,7 @@ func main() {
 				fmt.Println(strings.Repeat("-", 80))
 				fmt.Printf("Directory Summary: %d/%d items found in Transmission\n", found, len(entries))
 				if missingSize > 0 {
-					fmt.Printf("Missing items total size: %s\n", formatSize(missingSize))
+					fmt.Printf("Missing items total size: %s\n", utils.FormatSize(missingSize))
 				}
 
 				totalItems += len(entries)
@@ -306,13 +202,13 @@ func main() {
 				fmt.Printf("Overall Summary: %d/%d items found in Transmission across %d directories\n",
 					totalFound, totalItems, len(cfg.Dirs))
 				if totalMissingSize > 0 {
-					fmt.Printf("Total missing items size: %s\n", formatSize(totalMissingSize))
+					fmt.Printf("Total missing items size: %s\n", utils.FormatSize(totalMissingSize))
 				}
 			}
 
 			// Write missing paths to output file if specified
 			if outputFile != "" {
-				err := writeMissingPaths(outputFile, missingPaths)
+				err := utils.WriteMissingPaths(outputFile, missingPaths)
 				if err != nil {
 					return fmt.Errorf("error writing to output file: %w", err)
 				}
@@ -327,187 +223,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func getSessionID(cfg Config) (string, error) {
-	url := fmt.Sprintf("http://%s:%d/transmission/rpc", cfg.Host, cfg.Port)
-	
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte("{}")))
-	if err != nil {
-		return "", err
-	}
-
-	if cfg.User != "" {
-		req.SetBasicAuth(cfg.User, cfg.Password)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	sessionID := resp.Header.Get("X-Transmission-Session-Id")
-	if sessionID == "" {
-		return "", fmt.Errorf("no session ID received")
-	}
-
-	return sessionID, nil
-}
-
-func getTorrents(cfg Config, sessionID string) ([]TorrentInfo, error) {
-	url := fmt.Sprintf("http://%s:%d/transmission/rpc", cfg.Host, cfg.Port)
-
-	reqBody := TransmissionRequest{
-		Method: "torrent-get",
-		Arguments: map[string]interface{}{
-			"fields": []string{"id", "name", "downloadDir"},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Transmission-Session-Id", sessionID)
-	
-	if cfg.User != "" {
-		req.SetBasicAuth(cfg.User, cfg.Password)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result TransmissionResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Result != "success" {
-		return nil, fmt.Errorf("transmission returned: %s", result.Result)
-	}
-
-	return result.Arguments.Torrents, nil
-}
-
-func getAllTorrentPaths(cfg Config, sessionID string) ([]string, error) {
-	url := fmt.Sprintf("http://%s:%d/transmission/rpc", cfg.Host, cfg.Port)
-
-	reqBody := TransmissionRequest{
-		Method: "torrent-get",
-		Arguments: map[string]interface{}{
-			"fields": []string{"id", "name", "downloadDir", "hashString"},
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Transmission-Session-Id", sessionID)
-
-	if cfg.User != "" {
-		req.SetBasicAuth(cfg.User, cfg.Password)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result TransmissionResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Result != "success" {
-		return nil, fmt.Errorf("transmission returned: %s", result.Result)
-	}
-
-	var paths []string
-	for _, torrent := range result.Arguments.Torrents {
-		// Construct absolute path using the torrent name and download directory
-		absPath := filepath.Join(torrent.DownloadDir, torrent.Name)
-		paths = append(paths, absPath)
-	}
-
-	// Sort paths alphabetically
-	sort.Strings(paths)
-
-	return paths, nil
-}
-
-func listDownloadDirectories(cfg Config, sessionID string) error {
-	torrents, err := getTorrents(cfg, sessionID)
-	if err != nil {
-		return err
-	}
-
-	// Collect unique download directories
-	dirMap := make(map[string]int)
-	for _, t := range torrents {
-		dirMap[t.DownloadDir]++
-	}
-
-	// Convert to sorted slice
-	type dirCount struct {
-		path  string
-		count int
-	}
-	
-	var dirs []dirCount
-	for path, count := range dirMap {
-		dirs = append(dirs, dirCount{path: path, count: count})
-	}
-
-	// Sort by path
-	for i := 0; i < len(dirs); i++ {
-		for j := i + 1; j < len(dirs); j++ {
-			if dirs[i].path > dirs[j].path {
-				dirs[i], dirs[j] = dirs[j], dirs[i]
-			}
-		}
-	}
-
-	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
-	fmt.Println(strings.Repeat("-", 80))
-	
-	for _, d := range dirs {
-		fmt.Printf("%s (%d torrents)\n", d.path, d.count)
-	}
-
-	return nil
 }
