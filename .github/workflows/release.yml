@@ -1,0 +1,76 @@
+name: CI / Dynamic Test & Release from GoReleaser Targets
+
+on:
+  push:
+    tags:
+      - '*'    # triggers releases on version tags
+  pull_request:
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install yq
+        run: |
+          sudo apt-get update && sudo apt-get install -y yq
+
+      - name: Generate matrix from GoReleaser
+        id: set-matrix
+        run: |
+          MATRIX=$(yq -o=json '.builds[] | .goos[] as $os | .goarch[] as $arch | 
+                  if .goarm != null then .goarm[] as $arm | {"goos": $os, "goarch": $arch, "goarm": $arm}
+                  else {"goos": $os, "goarch": $arch} end' .goreleaser.yml | jq -s '.')
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  test:
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.generate-matrix.outputs.matrix)}}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU (for ARM)
+        if: startsWith(matrix.goarch, 'arm') 
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx (for ARM builds)
+        if: startsWith(matrix.goarch, 'arm')
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Build & Test
+        run: |
+          if [[ "${{matrix.goarch}}" == "arm" && -n "${{matrix.goarm}}" ]]; then
+            docker run --rm --platform linux/arm/v${{matrix.goarm}} \
+              -v $PWD:/src -w /src golang:1.23 \
+              bash -c "go build -v ./... && go test -v ./..."
+          else
+            go build -v ./...
+            go test -v ./...
+          
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
