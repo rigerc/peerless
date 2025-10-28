@@ -75,6 +75,13 @@ func main() {
 				Name:  "list-directories",
 				Usage: "List all download directories from Transmission",
 				Aliases: []string{"ls-dirs", "ld"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output file for directory list",
+					},
+				},
 				Action: runListDirectories,
 			},
 			{
@@ -136,7 +143,7 @@ func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) 
 	output.Logger.Info("Connecting to Transmission",
 		"host", cfg.Host,
 		"port", cfg.Port,
-		"user", cfg.User != "")
+		"authenticated", cfg.User != "")
 
 	client := client.NewTransmissionClient(cfg)
 	output.Logger.Debug("Created Transmission client")

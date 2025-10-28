@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"peerless/pkg/types"
 )
@@ -35,7 +36,9 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 		req.SetBasicAuth(c.config.User, c.config.Password)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -77,7 +80,9 @@ func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo,
 		req.SetBasicAuth(c.config.User, c.config.Password)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -143,14 +148,10 @@ func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
 		dirs = append(dirs, dirCount{path: path, count: count})
 	}
 
-	// Sort by path
-	for i := 0; i < len(dirs); i++ {
-		for j := i + 1; j < len(dirs); j++ {
-			if dirs[i].path > dirs[j].path {
-				dirs[i], dirs[j] = dirs[j], dirs[i]
-			}
-		}
-	}
+	// Sort by path using Go's built-in sort
+	sort.Slice(dirs, func(i, j int) bool {
+		return dirs[i].path < dirs[j].path
+	})
 
 	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
 	fmt.Println(strings.Repeat("-", 80))
