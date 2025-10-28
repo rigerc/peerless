@@ -1,258 +1,265 @@
 # go-tneat
 
-**Transmission neat** - A CLI tool to check local directories against Transmission BitTorrent client torrents.
+A Go CLI tool that checks local directories against Transmission torrents to identify missing files and directories.
 
-go-tneat helps you identify missing files by comparing what's in your local directories with what exists in your Transmission BitTorrent client. It's perfect for ensuring your downloaded content is complete and finding any missing items.
+## Overview
+
+**go-tneat** (Transmission Neat) connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names. This helps you identify which local items are not tracked in your Transmission instance, making it easier to maintain an organized torrent library.
 
 ## Features
 
-- 🔍 **Directory Check**: Compare local directories with Transmission torrents
-- 📁 **List Download Directories**: View all download directories from Transmission
-- 📄 **List Torrents**: Display all torrent paths from Transmission
-- 📊 **Summary Reports**: Get detailed statistics on found/missing items
-- 💾 **Missing Items Export**: Save missing item paths to a file
-- 🎨 **Colorful Output**: Clear visual indicators for found/missing items
-- 🔧 **Configurable**: Custom host, port, username, and password support
+- **Directory Comparison**: Check local directories against Transmission torrents
+- **Multiple Directory Support**: Analyze multiple directories in a single run
+- **Authentication Support**: Connect to Transmission with username/password
+- **Remote Connection**: Connect to Transmission running on any host
+- **Missing Items Export**: Export missing file paths to a text file
+- **Color-coded Output**: Visual feedback with terminal colors
+- **Verbose Logging**: Configurable output levels (error, info, debug)
+- **Cross-platform**: Built for Linux, Windows, and macOS
 
 ## Installation
-
-### From Binary
-
-Download the latest release from [GitHub Releases](https://github.com/your-username/go-tneat/releases):
-
-```bash
-# Linux
-curl -L -o go-tneat https://github.com/your-username/go-tneat/releases/latest/download/go-tneat-linux-amd64
-chmod +x go-tneat
-sudo mv go-tneat /usr/local/bin/
-
-# macOS
-curl -L -o go-tneat https://github.com/your-username/go-tneat/releases/latest/download/go-tneat-darwin-amd64
-chmod +x go-tneat
-sudo mv go-tneat /usr/local/bin/
-
-# Windows
-curl -L -o go-tneat.exe https://github.com/your-username/go-tneat/releases/latest/download/go-tneat-windows-amd64.exe
-```
 
 ### From Source
 
 ```bash
-git clone https://github.com/your-username/go-tneat.git
+git clone <repository-url>
 cd go-tneat
-go build -o go-tneat
+go build -o go-tneat main.go
 ```
+
+### Using GoReleaser
+
+```bash
+goreleaser build --clean
+```
+
+Binaries will be available in the `dist/` directory.
 
 ## Usage
 
-### Basic Commands
+### Basic Usage
+
+Check the current directory against Transmission torrents:
 
 ```bash
-# Check current directory against Transmission
 ./go-tneat
-
-# Check specific directories
-./go-tneat check --dir /path/to/downloads --dir /path/to/media
-
-# List all download directories from Transmission
-./go-tneat list-directories
-
-# List all torrent paths
-./go-tneat list-torrents
 ```
 
-### Connection Options
+### Check Specific Directories
 
 ```bash
-# Connect to remote Transmission instance
-./go-tneat --host 192.168.1.100 --port 9091 --username myuser --password mypass
+./go-tneat check --dir /path/to/movies --dir /path/to/tv
+```
 
-# Enable verbose logging
-./go-tneat --verbose check --dir /downloads
+### Connect to Remote Transmission
 
-# Enable debug logging
-./go-tneat --debug check --dir /downloads
+```bash
+./go-tneat --host 192.168.1.100 --port 9091 --user admin --password secret
 ```
 
 ### Export Missing Items
 
 ```bash
-# Save missing item paths to a file
-./go-tneat check --dir /downloads --output missing-items.txt
+./go-tneat --output missing-items.txt
 ```
 
-## Options
+### List Management Commands
 
-### Global Flags
+List all download directories configured in Transmission:
 
-- `--host, -H`: Transmission host (default: localhost)
-- `--port, -po`: Transmission port (default: 9091)
-- `--user, -u`: Transmission username
-- `--password, -p`: Transmission password
-- `--verbose, -v`: Enable verbose logging output
-- `--debug, -d`: Enable debug logging output
+```bash
+./go-tneat list-directories
+```
 
-### Check Command Options
+List all torrent paths from Transmission:
 
+```bash
+./go-tneat list-torrents
+```
+
+### Verbosity Control
+
+```bash
+# Show info-level output
+./go-tneat --verbose
+
+# Show debug-level output
+./go-tneat --debug
+```
+
+## Commands
+
+### `check` (default)
+
+Compare local directories with Transmission torrents.
+
+**Flags:**
 - `--dir, -d`: Directory to check (can be specified multiple times)
 - `--output, -o`: Output file for absolute paths of missing items
 
-### Command Aliases
-
-- `list-directories` → `ls-dirs`, `ld`
-- `list-torrents` → `ls-torrents`, `lt`
-
-## Examples
-
-### Example 1: Basic Directory Check
-
+**Example:**
 ```bash
-$ ./go-tneat check --dir ~/Downloads
-
-Found 15 torrents in Transmission
-================================================================================
-Directory: /home/user/Downloads
-================================================================================
-✓ movie1.mkv (Found in Transmission)
-✓ tv-show-s01e01.mp4 (Found in Transmission)
-✗ old-file.txt (Missing from Transmission)
-✓ document.pdf (Found in Transmission)
-
-Directory Summary: 3/4 items found in Transmission
-Missing items total size: 2.3 MB
+./go-tneat check --dir /downloads/movies --dir /downloads/tv --output missing.txt
 ```
 
-### Example 2: Multiple Directories with Export
+### `list-directories` (aliases: `ls-dirs`, `ld`)
 
+List all download directories from Transmission with torrent counts.
+
+**Example:**
 ```bash
-$ ./go-tneat check \
-  --dir ~/Downloads \
-  --dir ~/Media \
-  --output missing.txt \
-  --verbose
-
-[INFO] Connecting to Transmission host=localhost port=9091 user=true
-[INFO] Retrieved torrents from Transmission count=15
-[INFO] Starting directory check directories=[/home/user/Downloads /home/user/Media]
-
-Found 15 torrents in Transmission
-
-Directory: /home/user/Downloads
-================================================================================
-✓ movie1.mkv
-✓ tv-show-s01e01.mp4
-✗ incomplete-download/
-Directory Summary: 2/3 items found in Transmission
-Missing items total size: 1.2 GB
-
-Directory: /home/user/Media
-================================================================================
-✓ music-album/
-✓ video-tutorials/
-Directory Summary: 2/2 items found in Transmission
-
-Overall Summary: 4/5 items found in Transmission across 2 directories
-Total missing items size: 1.2 GB
-
-Wrote 2 missing item paths to: missing.txt
+./go-tneat list-directories
 ```
 
-### Example 3: Remote Transmission Server
+### `list-torrents` (aliases: `ls-torrents`, `lt`)
 
+List all torrent paths from Transmission.
+
+**Example:**
 ```bash
-$ ./go-tneat \
-  --host nas.local \
-  --port 9091 \
-  --username admin \
-  --password secret123 \
-  check --dir /volume1/downloads
+./go-tneat list-torrents
 ```
+
+## Global Flags
+
+- `--host, -H`: Transmission host (default: localhost)
+- `--port, -po`: Transmission port (default: 9091)
+- `--user, -u`: Transmission username (optional)
+- `--password, -p`: Transmission password (optional)
+- `--verbose, -v`: Enable verbose logging output
+- `--debug, -d`: Enable debug logging output
+
+## Output Examples
+
+### Check Command Output
+
+```
+Directory: /downloads/movies
+--------------------------------------------------------------------------------
+✗ [FILE] Movie.2023.1080p.BluRay.x264
+✓ [DIR] Movie.Collection.2023
+✗ [DIR] Another.Movie.2024
+--------------------------------------------------------------------------------
+Directory Summary: 1/3 items found in Transmission
+Missing items total size: 25.67 GB
+```
+
+### List Directories Output
+
+```
+Download Directories in Transmission (2 unique):
+--------------------------------------------------------------------------------
+/downloads/movies (2 torrents)
+/downloads/tv (1 torrents)
+```
+
+## Color Legend
+
+- ✓ **Green**: Item found in Transmission
+- ✗ **Red**: Item missing from Transmission
+- **Blue**: Directory headers and information
+- **Cyan**: File paths and summaries
+- **Gray**: File sizes and separators
 
 ## Configuration
 
-### Environment Variables
-
-You can set the following environment variables to avoid passing credentials on the command line:
-
-- `TRANSMISSION_HOST`: Transmission host
-- `TRANSMISSION_PORT`: Transmission port
-- `TRANSMISSION_USER`: Transmission username
-- `TRANSMISSION_PASSWORD`: Transmission password
-
-```bash
-export TRANSMISSION_HOST=nas.local
-export TRANSMISSION_USER=admin
-export TRANSMISSION_PASSWORD=secret123
-./go-tneat check --dir ~/Downloads
-```
+go-tneat connects to Transmission via its RPC API. The default configuration assumes Transmission is running on `localhost:9091` with no authentication.
 
 ### Transmission RPC Settings
 
-Make sure your Transmission daemon allows RPC connections:
+Ensure Transmission's RPC interface is enabled:
 
-1. Enable RPC in Transmission preferences
-2. Set the RPC port (default: 9091)
-3. Configure authentication if needed
-4. For remote access, bind to `0.0.0.0` instead of `127.0.0.1`
+1. Open Transmission preferences
+2. Go to "Remote" or "Web" tab
+3. Enable "Allow remote access"
+4. Set username/password if desired
+5. Note the RPC port (default: 9091)
 
-## Output Explanation
+## Development
 
-### Status Indicators
+### Prerequisites
 
-- **✓**: Item found in Transmission
-- **✗**: Item missing from Transmission
-- **📁**: Directory (for folder status)
+- Go 1.25.3 or later
 
-### Size Formatting
+### Building
 
-Sizes are automatically formatted with appropriate units:
-- Bytes: `256 B`
-- Kilobytes: `1.2 KB`
-- Megabytes: `15.3 MB`
-- Gigabytes: `2.1 GB`
-- Terabytes: `1.5 TB`
+```bash
+go build -o go-tneat main.go
+```
+
+### Testing
+
+```bash
+# Run all tests
+go test -v ./...
+
+# Run specific package tests
+go test -v ./pkg/client
+go test -v ./pkg/utils
+go test -v ./pkg/types
+```
+
+### Project Structure
+
+```
+go-tneat/
+├── main.go              # CLI entry point
+├── pkg/
+│   ├── client/          # Transmission RPC client
+│   ├── output/          # Terminal output styling
+│   ├── types/           # Data structures
+│   └── utils/           # File system utilities
+├── go.mod               # Go module definition
+├── go.sum               # Dependency checksums
+├── .goreleaser.yaml     # Release configuration
+└── README.md            # This file
+```
+
+## Dependencies
+
+- `github.com/urfave/cli/v3` - CLI framework
+- `github.com/charmbracelet/lipgloss` - Terminal styling
+- `github.com/charmbracelet/log` - Structured logging
+- `github.com/stretchr/testify` - Testing utilities
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License.
 
 ## Troubleshooting
 
 ### Connection Issues
 
-```bash
-# Test connection with verbose logging
-./go-tneat --verbose list-torrents
+- Ensure Transmission is running and RPC is enabled
+- Check that the host and port are correct
+- Verify firewall settings allow traffic to the RPC port
+- Confirm authentication credentials if required
 
-# Common issues:
-# 1. Transmission RPC not enabled
-# 2. Wrong host/port combination
-# 3. Authentication failure
-# 4. Firewall blocking connection
-```
+### Performance
 
-### Permission Issues
+- Large directories may take time to process, especially when calculating sizes
+- Use `--verbose` to see progress information
+- Consider checking smaller directories individually for faster results
 
-```bash
-# Ensure you have read access to directories
-ls -la /path/to/directory
+### Color Output
 
-# Run with appropriate permissions
-./go-tneat check --dir /protected/directory
-```
+- Colors are automatically disabled in non-terminal environments
+- Force monochrome output by piping to another command or redirecting to a file
 
-### Debug Mode
+## Similar Tools
 
-For detailed troubleshooting:
+- [transmission-remote](https://transmissionbt.com/) - Official Transmission CLI
+- [transmission-cli](https://github.com/transmission/transmission) - Command-line interface
 
-```bash
-./go-tneat --debug check --dir /path/to/directory
-```
+## Support
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Release Information
-
-This project uses GoReleaser for automated releases. See [.goreleaser.yaml](.goreleaser.yaml) for build configuration.
+For issues, feature requests, or questions, please open an issue on the project repository.
