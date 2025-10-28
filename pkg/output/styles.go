@@ -79,7 +79,7 @@ func init() {
 	Logger = log.NewWithOptions(os.Stderr, log.Options{
 		ReportCaller:    false,
 		ReportTimestamp: false,
-		Prefix:          "go-tneat",
+		Prefix:          "peerless",
 	})
 
 	// Check if we're in a terminal that supports colors

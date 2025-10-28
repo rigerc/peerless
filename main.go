@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go-tneat/pkg/client"
-	"go-tneat/pkg/output"
-	"go-tneat/pkg/types"
-	"go-tneat/pkg/utils"
+	"peerless/pkg/client"
+	"peerless/pkg/output"
+	"peerless/pkg/types"
+	"peerless/pkg/utils"
 
 	"github.com/charmbracelet/log"
 	"github.com/urfave/cli/v3"
@@ -18,8 +18,8 @@ import (
 
 func main() {
 	app := &cli.Command{
-		Name:  "go-tneat",
-		Usage: "Transmission neat - check local directories against Transmission torrents",
+		Name:  "peerless",
+		Usage: "Peerless - check local directories against Transmission torrents",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "host",

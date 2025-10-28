@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**go-tneat** is a Go CLI application that checks local directories against Transmission torrents. It connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names to identify missing items.
+**Peerless** is a Go CLI application that checks local directories against Transmission torrents. It connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names to identify missing items.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building
 ```bash
-go build -o go-tneat main.go
+go build -o peerless main.go
 ```
 
 ### Testing
@@ -70,26 +70,26 @@ Main dependencies from `go.mod`:
 
 ```bash
 # Check current directory against torrents
-./go-tneat
+./peerless
 
 # Check specific directories
-./go-tneat check --dir /path/to/movies --dir /path/to/tv
+./peerless check --dir /path/to/movies --dir /path/to/tv
 
 # Connect to remote Transmission with authentication
-./go-tneat --host 192.168.1.100 --port 9091 --user admin --password secret
+./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
 
 # Export missing items to file
-./go-tneat --output missing.txt
+./peerless --output missing.txt
 
 # List all Transmission download directories
-./go-tneat list-directories
+./peerless list-directories
 
 # List all torrent paths
-./go-tneat list-torrents
+./peerless list-torrents
 
 # Enable verbose/debug logging
-./go-tneat --verbose
-./go-tneat --debug
+./peerless --verbose
+./peerless --debug
 ```
 
 ## Configuration

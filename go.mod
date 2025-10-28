@@ -1,4 +1,4 @@
-module go-tneat
+module peerless
 
 go 1.25.3
 

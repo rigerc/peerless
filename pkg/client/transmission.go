@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"go-tneat/pkg/types"
+	"peerless/pkg/types"
 )
 
 type TransmissionClient struct {

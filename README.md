@@ -1,10 +1,10 @@
-# go-tneat
+# Peerless
 
 A Go CLI tool that checks local directories against Transmission torrents to identify missing files and directories.
 
 ## Overview
 
-**go-tneat** (Transmission Neat) connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names. This helps you identify which local items are not tracked in your Transmission instance, making it easier to maintain an organized torrent library.
+**Peerless** connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names. This helps you identify which local items are not tracked in your Transmission instance, making it easier to maintain an organized torrent library.
 
 ## Features
 
@@ -19,12 +19,16 @@ A Go CLI tool that checks local directories against Transmission torrents to ide
 
 ## Installation
 
+### Pre-built binaries
+
+Binaries are available in release for linux, windows and os x, including a arm-7 one (Synology)
+
 ### From Source
 
 ```bash
 git clone <repository-url>
-cd go-tneat
-go build -o go-tneat main.go
+cd peerless
+go build -o peerless main.go
 ```
 
 ### Using GoReleaser
@@ -42,25 +46,25 @@ Binaries will be available in the `dist/` directory.
 Check the current directory against Transmission torrents:
 
 ```bash
-./go-tneat
+./peerless
 ```
 
 ### Check Specific Directories
 
 ```bash
-./go-tneat check --dir /path/to/movies --dir /path/to/tv
+./peerless check --dir /path/to/movies --dir /path/to/tv
 ```
 
 ### Connect to Remote Transmission
 
 ```bash
-./go-tneat --host 192.168.1.100 --port 9091 --user admin --password secret
+./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
 ```
 
 ### Export Missing Items
 
 ```bash
-./go-tneat --output missing-items.txt
+./peerless --output missing-items.txt
 ```
 
 ### List Management Commands
@@ -68,23 +72,23 @@ Check the current directory against Transmission torrents:
 List all download directories configured in Transmission:
 
 ```bash
-./go-tneat list-directories
+./peerless list-directories
 ```
 
 List all torrent paths from Transmission:
 
 ```bash
-./go-tneat list-torrents
+./peerless list-torrents
 ```
 
 ### Verbosity Control
 
 ```bash
 # Show info-level output
-./go-tneat --verbose
+./peerless --verbose
 
 # Show debug-level output
-./go-tneat --debug
+./peerless --debug
 ```
 
 ## Commands
@@ -99,7 +103,7 @@ Compare local directories with Transmission torrents.
 
 **Example:**
 ```bash
-./go-tneat check --dir /downloads/movies --dir /downloads/tv --output missing.txt
+./peerless check --dir /downloads/movies --dir /downloads/tv --output missing.txt
 ```
 
 ### `list-directories` (aliases: `ls-dirs`, `ld`)
@@ -108,7 +112,7 @@ List all download directories from Transmission with torrent counts.
 
 **Example:**
 ```bash
-./go-tneat list-directories
+./peerless list-directories
 ```
 
 ### `list-torrents` (aliases: `ls-torrents`, `lt`)
@@ -117,7 +121,7 @@ List all torrent paths from Transmission.
 
 **Example:**
 ```bash
-./go-tneat list-torrents
+./peerless list-torrents
 ```
 
 ## Global Flags
@@ -163,7 +167,7 @@ Download Directories in Transmission (2 unique):
 
 ## Configuration
 
-go-tneat connects to Transmission via its RPC API. The default configuration assumes Transmission is running on `localhost:9091` with no authentication.
+peerless connects to Transmission via its RPC API. The default configuration assumes Transmission is running on `localhost:9091` with no authentication.
 
 ### Transmission RPC Settings
 
@@ -184,7 +188,7 @@ Ensure Transmission's RPC interface is enabled:
 ### Building
 
 ```bash
-go build -o go-tneat main.go
+go build -o peerless main.go
 ```
 
 ### Testing
@@ -202,7 +206,7 @@ go test -v ./pkg/types
 ### Project Structure
 
 ```
-go-tneat/
+peerless/
 ├── main.go              # CLI entry point
 ├── pkg/
 │   ├── client/          # Transmission RPC client
