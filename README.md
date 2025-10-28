@@ -43,28 +43,41 @@ Binaries will be available in the `dist/` directory.
 
 ### Basic Usage
 
-Check the current directory against Transmission torrents:
+Show the help screen with all available commands:
 
 ```bash
 ./peerless
 ```
 
+To check the current directory against Transmission torrents, use the `check` command:
+
+```bash
+./peerless --host localhost --user admin --password secret check
+```
+
 ### Check Specific Directories
 
 ```bash
-./peerless check --dir /path/to/movies --dir /path/to/tv
+./peerless --host localhost --user admin --password secret check --dir /path/to/movies --dir /path/to/tv
 ```
 
-### Connect to Remote Transmission
+### Connect to Transmission
+
+**Authentication is required** for all commands:
 
 ```bash
 ./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
 ```
 
+**Required Parameters:**
+- `--host, -H`: Transmission host address
+- `--user, -u`: Transmission username
+- `--password, -p`: Transmission password
+
 ### Export Missing Items
 
 ```bash
-./peerless --output missing-items.txt
+./peerless --host localhost --user admin --password secret --output missing-items.txt
 ```
 
 ### List Management Commands
@@ -72,28 +85,28 @@ Check the current directory against Transmission torrents:
 List all download directories configured in Transmission:
 
 ```bash
-./peerless list-directories
+./peerless --host localhost --user admin --password secret list-directories
 ```
 
 List all torrent paths from Transmission:
 
 ```bash
-./peerless list-torrents
+./peerless --host localhost --user admin --password secret list-torrents
 ```
 
 ### Verbosity Control
 
 ```bash
 # Show info-level output
-./peerless --verbose
+./peerless --host localhost --user admin --password secret --verbose
 
 # Show debug-level output
-./peerless --debug
+./peerless --host localhost --user admin --password secret --debug
 ```
 
 ## Commands
 
-### `check` (default)
+### `check`
 
 Compare local directories with Transmission torrents.
 
@@ -126,10 +139,10 @@ List all torrent paths from Transmission.
 
 ## Global Flags
 
-- `--host, -H`: Transmission host (default: localhost)
+- `--host, -H`: Transmission host (required)
 - `--port, -po`: Transmission port (default: 9091)
-- `--user, -u`: Transmission username (optional)
-- `--password, -p`: Transmission password (optional)
+- `--user, -u`: Transmission username (required)
+- `--password, -p`: Transmission password (required)
 - `--verbose, -v`: Enable verbose logging output
 - `--debug, -d`: Enable debug logging output
 
@@ -167,7 +180,7 @@ Download Directories in Transmission (2 unique):
 
 ## Configuration
 
-peerless connects to Transmission via its RPC API. The default configuration assumes Transmission is running on `localhost:9091` with no authentication.
+peerless connects to Transmission via its RPC API. Authentication is **required** - you must provide host, username, and password. The default port is 9091.
 
 ### Transmission RPC Settings
 

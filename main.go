@@ -24,8 +24,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "host",
 				Aliases: []string{"H"},
-				Value:   "localhost",
-				Usage:   "Transmission host",
+				Usage:   "Transmission host (required)",
 			},
 			&cli.IntFlag{
 				Name:    "port",
@@ -36,12 +35,12 @@ func main() {
 			&cli.StringFlag{
 				Name:    "user",
 				Aliases: []string{"u"},
-				Usage:   "Transmission username",
+				Usage:   "Transmission username (required)",
 			},
 			&cli.StringFlag{
 				Name:    "password",
 				Aliases: []string{"p"},
-				Usage:   "Transmission password",
+				Usage:   "Transmission password (required)",
 			},
 			&cli.BoolFlag{
 				Name:    "verbose",
@@ -85,7 +84,9 @@ func main() {
 				Action: runListTorrents,
 			},
 		},
-		Action: runCheck, // Default action when no subcommand is provided
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return cli.ShowAppHelp(cmd)
+		}, // Show help when no subcommand is provided
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
@@ -110,11 +111,26 @@ func setupLogging(cmd *cli.Command) {
 func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) {
 	setupLogging(cmd)
 
+	// Validate mandatory fields
+	host := cmd.String("host")
+	user := cmd.String("user")
+	password := cmd.String("password")
+
+	if host == "" {
+		return nil, "", fmt.Errorf("host (-H/--host) is required")
+	}
+	if user == "" {
+		return nil, "", fmt.Errorf("username (-u/--user) is required")
+	}
+	if password == "" {
+		return nil, "", fmt.Errorf("password (-p/--password) is required")
+	}
+
 	cfg := types.Config{
-		Host:     cmd.String("host"),
+		Host:     host,
 		Port:     cmd.Int("port"),
-		User:     cmd.String("user"),
-		Password: cmd.String("password"),
+		User:     user,
+		Password: password,
 	}
 
 	output.Logger.Info("Connecting to Transmission",
