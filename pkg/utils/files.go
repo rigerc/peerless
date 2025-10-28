@@ -63,3 +63,27 @@ func WriteMissingPaths(filename string, paths []string) error {
 
 	return nil
 }
+
+// DirectoryInfo represents a directory with its torrent count
+type DirectoryInfo struct {
+	Path  string
+	Count int
+}
+
+// WriteDirectoryList writes a list of directories to a file
+func WriteDirectoryList(filename string, dirs []DirectoryInfo) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, dir := range dirs {
+		_, err := file.WriteString(fmt.Sprintf("%s (%d torrents)\n", dir.Path, dir.Count))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

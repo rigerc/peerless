@@ -88,6 +88,13 @@ func main() {
 				Name:  "list-torrents",
 				Usage: "List all torrent paths from Transmission",
 				Aliases: []string{"ls-torrents", "lt"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output file for torrent paths",
+					},
+				},
 				Action: runListTorrents,
 			},
 		},
@@ -309,6 +316,7 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runListDirectories(ctx context.Context, cmd *cli.Command) error {
+	outputFile := cmd.String("output")
 	output.Logger.Info("Starting directory listing command")
 
 	client, sessionID, err := createClient(cmd)
@@ -317,10 +325,30 @@ func runListDirectories(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	output.Logger.Info("Retrieving download directories from Transmission")
-	err = client.ListDownloadDirectories(sessionID)
+	dirs, err := client.GetDownloadDirectories(sessionID)
 	if err != nil {
 		output.Logger.Error("Failed to list directories", "error", err)
 		return err
+	}
+
+	// Write to file if output flag is specified
+	if outputFile != "" {
+		output.Logger.Info("Writing directory list to file", "file", outputFile, "count", len(dirs))
+		err := utils.WriteDirectoryList(outputFile, dirs)
+		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d directories to: %s", len(dirs), outputFile))
+	} else {
+		// Display to console with styling
+		output.PrintSummary(fmt.Sprintf("Download Directories in Transmission (%d unique)", len(dirs)))
+		output.PrintSeparator(80)
+
+		for _, d := range dirs {
+			fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
+		}
 	}
 
 	output.Logger.Info("Directory listing completed successfully")
@@ -328,6 +356,7 @@ func runListDirectories(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runListTorrents(ctx context.Context, cmd *cli.Command) error {
+	outputFile := cmd.String("output")
 	output.Logger.Info("Starting torrent listing command")
 
 	client, sessionID, err := createClient(cmd)
@@ -344,9 +373,21 @@ func runListTorrents(ctx context.Context, cmd *cli.Command) error {
 
 	output.Logger.Info("Found torrent paths", "count", len(paths))
 
-	// Output each path on its own line
-	for _, path := range paths {
-		output.PrintPath(path)
+	// Write to file if output flag is specified
+	if outputFile != "" {
+		output.Logger.Info("Writing torrent paths to file", "file", outputFile, "count", len(paths))
+		err := utils.WriteMissingPaths(outputFile, paths)
+		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d torrent paths to: %s", len(paths), outputFile))
+	} else {
+		// Display to console with styling
+		for _, path := range paths {
+			output.PrintPath(path)
+		}
 	}
 
 	output.Logger.Info("Torrent listing completed successfully")

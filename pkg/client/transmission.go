@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"peerless/pkg/types"
+	"peerless/pkg/utils"
 )
 
 type TransmissionClient struct {
@@ -125,10 +126,11 @@ func (c *TransmissionClient) GetAllTorrentPaths(sessionID string) ([]string, err
 	return paths, nil
 }
 
-func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
+// GetDownloadDirectories returns download directories with their torrent counts
+func (c *TransmissionClient) GetDownloadDirectories(sessionID string) ([]utils.DirectoryInfo, error) {
 	torrents, err := c.GetTorrents(sessionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Collect unique download directories
@@ -138,26 +140,31 @@ func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
 	}
 
 	// Convert to sorted slice
-	type dirCount struct {
-		path  string
-		count int
-	}
-
-	var dirs []dirCount
+	var dirs []utils.DirectoryInfo
 	for path, count := range dirMap {
-		dirs = append(dirs, dirCount{path: path, count: count})
+		dirs = append(dirs, utils.DirectoryInfo{Path: path, Count: count})
 	}
 
 	// Sort by path using Go's built-in sort
 	sort.Slice(dirs, func(i, j int) bool {
-		return dirs[i].path < dirs[j].path
+		return dirs[i].Path < dirs[j].Path
 	})
+
+	return dirs, nil
+}
+
+// ListDownloadDirectories prints download directories (for backward compatibility)
+func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
+	dirs, err := c.GetDownloadDirectories(sessionID)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
 	fmt.Println(strings.Repeat("-", 80))
 
 	for _, d := range dirs {
-		fmt.Printf("%s (%d torrents)\n", d.path, d.count)
+		fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
 	}
 
 	return nil
