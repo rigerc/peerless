@@ -86,12 +86,18 @@ List all download directories configured in Transmission:
 
 ```bash
 ./peerless --host localhost --user admin --password secret list-directories
+
+# Save directories to file
+./peerless --host localhost --user admin --password secret list-directories --output directories.txt
 ```
 
 List all torrent paths from Transmission:
 
 ```bash
 ./peerless --host localhost --user admin --password secret list-torrents
+
+# Save torrent paths to file
+./peerless --host localhost --user admin --password secret list-torrents --output torrents.txt
 ```
 
 ### Verbosity Control
@@ -123,18 +129,30 @@ Compare local directories with Transmission torrents.
 
 List all download directories from Transmission with torrent counts.
 
+**Flags:**
+- `--output, -o`: Output file for directory list
+
 **Example:**
 ```bash
 ./peerless list-directories
+
+# Save to file (unstyled output)
+./peerless list-directories --output directories.txt
 ```
 
 ### `list-torrents` (aliases: `ls-torrents`, `lt`)
 
 List all torrent paths from Transmission.
 
+**Flags:**
+- `--output, -o`: Output file for torrent paths
+
 **Example:**
 ```bash
 ./peerless list-torrents
+
+# Save to file (unstyled output)
+./peerless list-torrents --output torrents.txt
 ```
 
 ## Global Flags

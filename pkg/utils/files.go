@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 )
 
 func GetSize(path string) (int64, error) {
@@ -55,13 +57,31 @@ func WriteMissingPaths(filename string, paths []string) error {
 	defer file.Close()
 
 	for _, path := range paths {
-		_, err := file.WriteString(path + "\n")
+		cleanPath := SanitizeString(path)
+		_, err := file.WriteString(cleanPath + "\n")
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// SanitizeString removes control characters and LTR/RTL marks from strings
+func SanitizeString(s string) string {
+	var result strings.Builder
+	for _, r := range s {
+		// Skip control characters except newline, tab, and carriage return
+		if unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' {
+			continue
+		}
+		// Skip specific Unicode formatting characters
+		if r == '\u200E' || r == '\u200F' || r == '\u202A' || r == '\u202B' || r == '\u202C' || r == '\u202D' || r == '\u202E' {
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }
 
 // DirectoryInfo represents a directory with its torrent count
@@ -79,7 +99,8 @@ func WriteDirectoryList(filename string, dirs []DirectoryInfo) error {
 	defer file.Close()
 
 	for _, dir := range dirs {
-		_, err := file.WriteString(fmt.Sprintf("%s (%d torrents)\n", dir.Path, dir.Count))
+		cleanPath := SanitizeString(dir.Path)
+		_, err := file.WriteString(fmt.Sprintf("%s (%d torrents)\n", cleanPath, dir.Count))
 		if err != nil {
 			return err
 		}

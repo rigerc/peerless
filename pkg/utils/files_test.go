@@ -89,6 +89,57 @@ func TestFormatSize(t *testing.T) {
 	}
 }
 
+func TestSanitizeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "normal text",
+			input:    "/path/to/file.txt",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with LTR mark",
+			input:    "/path/to/file.txt\u200E",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with RTL mark",
+			input:    "/path/to/file.txt\u200F",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with multiple formatting characters",
+			input:    "/path/to/file.txt\u200E\u200F\u202A",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with newlines preserved",
+			input:    "/path/to/file.txt\n/another/path.txt",
+			expected: "/path/to/file.txt\n/another/path.txt",
+		},
+		{
+			name:     "with tabs preserved",
+			input:    "/path/to/file.txt\twith tab",
+			expected: "/path/to/file.txt\twith tab",
+		},
+		{
+			name:     "with control characters removed",
+			input:    "/path/to/file.txt\u0001\u0002",
+			expected: "/path/to/file.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeString(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestWriteMissingPaths(t *testing.T) {
 	t.Run("write paths to file", func(t *testing.T) {
 		tmpDir := t.TempDir()

@@ -117,7 +117,9 @@ func (c *TransmissionClient) GetAllTorrentPaths(sessionID string) ([]string, err
 	var paths []string
 	for _, torrent := range torrents {
 		absPath := filepath.Join(torrent.DownloadDir, torrent.Name)
-		paths = append(paths, absPath)
+		// Sanitize the path to remove any control characters
+		cleanPath := utils.SanitizeString(absPath)
+		paths = append(paths, cleanPath)
 	}
 
 	// Sort paths alphabetically
@@ -142,7 +144,8 @@ func (c *TransmissionClient) GetDownloadDirectories(sessionID string) ([]utils.D
 	// Convert to sorted slice
 	var dirs []utils.DirectoryInfo
 	for path, count := range dirMap {
-		dirs = append(dirs, utils.DirectoryInfo{Path: path, Count: count})
+		cleanPath := utils.SanitizeString(path)
+		dirs = append(dirs, utils.DirectoryInfo{Path: cleanPath, Count: count})
 	}
 
 	// Sort by path using Go's built-in sort
