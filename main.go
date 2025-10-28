@@ -7,10 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urfave/cli/v3"
 	"go-tneat/pkg/client"
+	"go-tneat/pkg/output"
 	"go-tneat/pkg/types"
 	"go-tneat/pkg/utils"
+
+	"github.com/charmbracelet/log"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
@@ -26,7 +29,7 @@ func main() {
 			},
 			&cli.IntFlag{
 				Name:    "port",
-				Aliases: []string{"p"},
+				Aliases: []string{"po"},
 				Value:   9091,
 				Usage:   "Transmission port",
 			},
@@ -37,8 +40,18 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "password",
-				Aliases: []string{"P"},
+				Aliases: []string{"p"},
 				Usage:   "Transmission password",
+			},
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"v"},
+				Usage:   "Enable verbose logging output",
+			},
+			&cli.BoolFlag{
+				Name:    "debug",
+				Aliases: []string{"d"},
+				Usage:   "Enable debug logging output",
 			},
 		},
 		Commands: []*cli.Command{
@@ -76,12 +89,27 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		output.Logger.Error("Application failed", "error", err)
 		os.Exit(1)
 	}
 }
 
+func setupLogging(cmd *cli.Command) {
+	debug := cmd.Bool("debug")
+	verbose := cmd.Bool("verbose")
+
+	if debug {
+		output.Logger.SetLevel(log.DebugLevel)
+	} else if verbose {
+		output.Logger.SetLevel(log.InfoLevel)
+	} else {
+		output.Logger.SetLevel(log.ErrorLevel) // Only show errors by default
+	}
+}
+
 func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) {
+	setupLogging(cmd)
+
 	cfg := types.Config{
 		Host:     cmd.String("host"),
 		Port:     cmd.Int("port"),
@@ -89,12 +117,21 @@ func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) 
 		Password: cmd.String("password"),
 	}
 
+	output.Logger.Info("Connecting to Transmission",
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"user", cfg.User != "")
+
 	client := client.NewTransmissionClient(cfg)
+	output.Logger.Debug("Created Transmission client")
+
 	sessionID, err := client.GetSessionID()
 	if err != nil {
+		output.Logger.Error("Failed to get session ID", "error", err)
 		return nil, "", fmt.Errorf("error getting session ID: %w", err)
 	}
 
+	output.Logger.Debug("Successfully obtained session ID")
 	return client, sessionID, nil
 }
 
@@ -107,6 +144,8 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 		dirs = []string{"."}
 	}
 
+	output.Logger.Info("Starting directory check", "directories", dirs)
+
 	client, sessionID, err := createClient(cmd)
 	if err != nil {
 		return err
@@ -115,8 +154,11 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 	// Get all torrents from Transmission
 	torrents, err := client.GetTorrents(sessionID)
 	if err != nil {
+		output.Logger.Error("Failed to get torrents", "error", err)
 		return fmt.Errorf("error getting torrents: %w", err)
 	}
+
+	output.Logger.Info("Retrieved torrents from Transmission", "count", len(torrents))
 
 	// Create a map of torrent names for quick lookup
 	torrentMap := make(map[string]bool)
@@ -124,7 +166,8 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 		torrentMap[strings.ToLower(t.Name)] = true
 	}
 
-	fmt.Printf("Found %d torrents in Transmission\n\n", len(torrents))
+	output.PrintSummary(fmt.Sprintf("Found %d torrents in Transmission", len(torrents)))
+	fmt.Println()
 
 	totalItems := 0
 	totalFound := 0
@@ -137,15 +180,18 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 			fmt.Println()
 		}
 
+		output.Logger.Debug("Checking directory", "path", dir)
+
 		// List directory contents
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading directory %s: %v\n", dir, err)
+			output.Logger.Error("Error reading directory", "directory", dir, "error", err)
+			output.PrintError(fmt.Sprintf("Error reading directory %s: %v", dir, err))
 			continue
 		}
 
-		fmt.Printf("Directory: %s\n", dir)
-		fmt.Println(strings.Repeat("-", 80))
+		output.PrintDirectoryHeader(dir)
+		output.PrintSeparator(80)
 
 		found := 0
 		missingSize := int64(0)
@@ -154,17 +200,9 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 			name := entry.Name()
 			inTransmission := torrentMap[strings.ToLower(name)]
 
-			var entryType string
-			if entry.IsDir() {
-				entryType = "[DIR] "
-			} else {
-				entryType = "[FILE]"
-			}
-
-			status := "✗"
 			if inTransmission {
-				status = "✓"
 				found++
+				output.Logger.Debug("Found item in Transmission", "name", name)
 			} else {
 				// Get size for missing items
 				fullPath := filepath.Join(dir, name)
@@ -180,69 +218,114 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 				if err == nil {
 					missingSize += size
 				}
+
+				output.Logger.Debug("Missing item", "name", name, "size", size)
 			}
 
-			fmt.Printf("%s %s %s\n", status, entryType, name)
+			// Print with colors
+			output.PrintTorrentStatus(inTransmission, name, entry.IsDir())
 		}
 
-		fmt.Println(strings.Repeat("-", 80))
-		fmt.Printf("Directory Summary: %d/%d items found in Transmission\n", found, len(entries))
+		output.PrintSeparator(80)
+		summary := fmt.Sprintf("Directory Summary: %d/%d items found in Transmission", found, len(entries))
+		output.PrintSummary(summary)
+
 		if missingSize > 0 {
-			fmt.Printf("Missing items total size: %s\n", utils.FormatSize(missingSize))
+			fmt.Print("Missing items total size: ")
+			output.PrintSize(utils.FormatSize(missingSize))
+			fmt.Println()
 		}
 
 		totalItems += len(entries)
 		totalFound += found
 		totalMissingSize += missingSize
+
+		output.Logger.Debug("Directory check completed",
+			"directory", dir,
+			"total", len(entries),
+			"found", found,
+			"missing_size", missingSize)
 	}
 
 	// Overall summary if multiple directories
 	if len(dirs) > 1 {
 		fmt.Println()
-		fmt.Println(strings.Repeat("=", 80))
-		fmt.Printf("Overall Summary: %d/%d items found in Transmission across %d directories\n",
+		output.PrintSeparator(80)
+		summary := fmt.Sprintf("Overall Summary: %d/%d items found in Transmission across %d directories",
 			totalFound, totalItems, len(dirs))
+		output.PrintSummary(summary)
+
 		if totalMissingSize > 0 {
-			fmt.Printf("Total missing items size: %s\n", utils.FormatSize(totalMissingSize))
+			fmt.Print("Total missing items size: ")
+			output.PrintSize(utils.FormatSize(totalMissingSize))
+			fmt.Println()
 		}
+
+		output.Logger.Info("Overall check completed",
+			"total_items", totalItems,
+			"total_found", totalFound,
+			"directories", len(dirs),
+			"missing_size", totalMissingSize)
 	}
 
 	// Write missing paths to output file if specified
 	if outputFile != "" {
+		output.Logger.Info("Writing missing paths to file", "file", outputFile, "count", len(missingPaths))
 		err := utils.WriteMissingPaths(outputFile, missingPaths)
 		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
 			return fmt.Errorf("error writing to output file: %w", err)
 		}
-		fmt.Printf("\nWrote %d missing item paths to: %s\n", len(missingPaths), outputFile)
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d missing item paths to: %s", len(missingPaths), outputFile))
 	}
+
+	output.Logger.Info("Directory check completed successfully")
 
 	return nil
 }
 
 func runListDirectories(ctx context.Context, cmd *cli.Command) error {
+	output.Logger.Info("Starting directory listing command")
+
 	client, sessionID, err := createClient(cmd)
 	if err != nil {
 		return err
 	}
 
-	return client.ListDownloadDirectories(sessionID)
+	output.Logger.Info("Retrieving download directories from Transmission")
+	err = client.ListDownloadDirectories(sessionID)
+	if err != nil {
+		output.Logger.Error("Failed to list directories", "error", err)
+		return err
+	}
+
+	output.Logger.Info("Directory listing completed successfully")
+	return nil
 }
 
 func runListTorrents(ctx context.Context, cmd *cli.Command) error {
+	output.Logger.Info("Starting torrent listing command")
+
 	client, sessionID, err := createClient(cmd)
 	if err != nil {
 		return err
 	}
 
+	output.Logger.Info("Retrieving all torrent paths from Transmission")
 	paths, err := client.GetAllTorrentPaths(sessionID)
 	if err != nil {
+		output.Logger.Error("Failed to get torrent paths", "error", err)
 		return fmt.Errorf("error getting all torrent paths: %w", err)
 	}
 
+	output.Logger.Info("Found torrent paths", "count", len(paths))
+
 	// Output each path on its own line
 	for _, path := range paths {
-		fmt.Println(path)
+		output.PrintPath(path)
 	}
 
+	output.Logger.Info("Torrent listing completed successfully")
 	return nil
 }
