@@ -1,11 +1,3 @@
-name: CI / Dynamic Test & Release from GoReleaser Targets
-
-on:
-  push:
-    tags:
-      - '*'    # triggers releases on version tags
-  pull_request:
-
 jobs:
   generate-matrix:
     runs-on: ubuntu-latest
@@ -25,7 +17,9 @@ jobs:
           MATRIX=$(yq -o=json '.builds[] | .goos[] as $os | .goarch[] as $arch | 
                   if .goarm != null then .goarm[] as $arm | {"goos": $os, "goarch": $arch, "goarm": $arm}
                   else {"goos": $os, "goarch": $arch} end' .goreleaser.yml | jq -s '.')
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          # Wrap in include: for GitHub Actions
+          MATRIX_JSON=$(jq -n --argjson m "$MATRIX" '{"include": $m}')
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
 
   test:
     needs: generate-matrix
@@ -37,7 +31,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up QEMU (for ARM)
-        if: startsWith(matrix.goarch, 'arm') 
+        if: startsWith(matrix.goarch, 'arm')
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx (for ARM builds)
