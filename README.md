@@ -1,286 +1,194 @@
 # Peerless
 
-A Go CLI tool that checks local directories against Transmission torrents to identify missing files and directories.
+A powerful Go CLI tool for managing Transmission torrents by comparing local directories with your torrent library.
 
 ## Overview
 
-**Peerless** connects to a Transmission BitTorrent client via its RPC API and compares local file/directory names with torrent names. This helps you identify which local items are not tracked in your Transmission instance, making it easier to maintain an organized torrent library.
+Peerless connects to your Transmission BitTorrent client and helps you identify which local files and directories are not tracked in torrents. Perfect for maintaining an organized torrent library and ensuring all your media is properly managed.
 
-## Features
+## ✨ Features
 
-- **Directory Comparison**: Check local directories against Transmission torrents
-- **Multiple Directory Support**: Analyze multiple directories in a single run
-- **Authentication Support**: Connect to Transmission with username/password
-- **Remote Connection**: Connect to Transmission running on any host
-- **Missing Items Export**: Export missing file paths to a text file
-- **Color-coded Output**: Visual feedback with terminal colors
-- **Verbose Logging**: Configurable output levels (error, info, debug)
-- **Cross-platform**: Built for Linux, Windows, and macOS
+- **🔐 Secure Authentication**: Mandatory authentication for all connections
+- **📁 Directory Analysis**: Compare local directories against torrent names
+- **📊 Multiple Output Formats**: Styled console output or plain text files
+- **🌍 Unicode Support**: Handles international file names and paths
+- **🚀 High Performance**: Fast comparison with efficient algorithms
+- **🛡️ Error Resilience**: Comprehensive error handling with actionable messages
+- **🎨 Beautiful Output**: Color-coded terminal output with automatic formatting
 
-## Installation
+## 🚀 Quick Start
+
+### Installation
 
 ### Pre-built binaries
 
 Binaries are available in release for linux, windows and os x, including a arm-7 one (Synology)
 
-### From Source
-
+#### From Source
 ```bash
 git clone <repository-url>
 cd peerless
 go build -o peerless main.go
 ```
 
-### Using GoReleaser
-
+#### Using GoReleaser
 ```bash
 goreleaser build --clean
 ```
 
-Binaries will be available in the `dist/` directory.
-
-## Usage
-
 ### Basic Usage
 
-Show the help screen with all available commands:
-
 ```bash
+# Show help screen
 ./peerless
-```
 
-To check the current directory against Transmission torrents, use the `check` command:
-
-```bash
+# Check current directory against torrents
 ./peerless --host localhost --user admin --password secret check
-```
 
-### Check Specific Directories
-
-```bash
-./peerless --host localhost --user admin --password secret check --dir /path/to/movies --dir /path/to/tv
-```
-
-### Connect to Transmission
-
-**Authentication is required** for all commands:
-
-```bash
-./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
-```
-
-**Required Parameters:**
-- `--host, -H`: Transmission host address
-- `--user, -u`: Transmission username
-- `--password, -p`: Transmission password
-
-### Export Missing Items
-
-```bash
-./peerless --host localhost --user admin --password secret --output missing-items.txt
-```
-
-### List Management Commands
-
-List all download directories configured in Transmission:
-
-```bash
+# List all Transmission directories
 ./peerless --host localhost --user admin --password secret list-directories
 
-# Save directories to file
-./peerless --host localhost --user admin --password secret list-directories --output directories.txt
-```
-
-List all torrent paths from Transmission:
-
-```bash
+# List all torrent paths
 ./peerless --host localhost --user admin --password secret list-torrents
-
-# Save torrent paths to file
-./peerless --host localhost --user admin --password secret list-torrents --output torrents.txt
 ```
 
-### Verbosity Control
+## 📖 Commands
+
+### `check` (Default Command)
+
+Compare local directories with Transmission torrents to find missing items.
 
 ```bash
-# Show info-level output
-./peerless --host localhost --user admin --password secret --verbose
-
-# Show debug-level output
-./peerless --host localhost --user admin --password secret --debug
+./peerless --host localhost --user admin --password secret check --dir /downloads/movies --dir /downloads/tv
 ```
-
-## Commands
-
-### `check`
-
-Compare local directories with Transmission torrents.
 
 **Flags:**
 - `--dir, -d`: Directory to check (can be specified multiple times)
-- `--output, -o`: Output file for absolute paths of missing items
+- `--output, -o`: Save missing items to file (unstyled output)
 
-**Example:**
-```bash
-./peerless check --dir /downloads/movies --dir /downloads/tv --output missing.txt
-```
-
-### `list-directories` (aliases: `ls-dirs`, `ld`)
-
-List all download directories from Transmission with torrent counts.
-
-**Flags:**
-- `--output, -o`: Output file for directory list
-
-**Example:**
-```bash
-./peerless list-directories
-
-# Save to file (unstyled output)
-./peerless list-directories --output directories.txt
-```
-
-### `list-torrents` (aliases: `ls-torrents`, `lt`)
-
-List all torrent paths from Transmission.
-
-**Flags:**
-- `--output, -o`: Output file for torrent paths
-
-**Example:**
-```bash
-./peerless list-torrents
-
-# Save to file (unstyled output)
-./peerless list-torrents --output torrents.txt
-```
-
-## Global Flags
-
-- `--host, -H`: Transmission host (required)
-- `--port, -po`: Transmission port (default: 9091)
-- `--user, -u`: Transmission username (required)
-- `--password, -p`: Transmission password (required)
-- `--verbose, -v`: Enable verbose logging output
-- `--debug, -d`: Enable debug logging output
-
-## Output Examples
-
-### Check Command Output
-
+**Example Output:**
 ```
 Directory: /downloads/movies
 --------------------------------------------------------------------------------
-✗ [FILE] Movie.2023.1080p.BluRay.x264
+✗ [DIR] Movie.2023.1080p.BluRay.x264
 ✓ [DIR] Movie.Collection.2023
-✗ [DIR] Another.Movie.2024
+✗ [FILE] Documentary.2024.720p.WEB-DL.x264
 --------------------------------------------------------------------------------
 Directory Summary: 1/3 items found in Transmission
 Missing items total size: 25.67 GB
 ```
 
-### List Directories Output
+### `list-directories` (Aliases: `ls-dirs`, `ld`)
 
+List all download directories configured in Transmission with torrent counts.
+
+```bash
+./peerless --host localhost --user admin --password secret list-directories
+
+# Save to file (plain text)
+./peerless --host localhost --user admin --password secret list-directories --output directories.txt
 ```
-Download Directories in Transmission (2 unique):
+
+**Output Example:**
+```
+Download Directories in Transmission (3 unique):
 --------------------------------------------------------------------------------
-/downloads/movies (2 torrents)
-/downloads/tv (1 torrents)
+/downloads/movies (15 torrents)
+/downloads/tv (8 torrents)
+/downloads/documentaries (3 torrents)
 ```
 
-## Color Legend
+### `list-torrents` (Aliases: `ls-torrents`, `lt`)
 
-- ✓ **Green**: Item found in Transmission
-- ✗ **Red**: Item missing from Transmission
-- **Blue**: Directory headers and information
-- **Cyan**: File paths and summaries
-- **Gray**: File sizes and separators
-
-## Configuration
-
-peerless connects to Transmission via its RPC API. Authentication is **required** - you must provide host, username, and password. The default port is 9091.
-
-### Transmission RPC Settings
-
-Ensure Transmission's RPC interface is enabled:
-
-1. Open Transmission preferences
-2. Go to "Remote" or "Web" tab
-3. Enable "Allow remote access"
-4. Set username/password if desired
-5. Note the RPC port (default: 9091)
-
-## Development
-
-### Prerequisites
-
-- Go 1.25.3 or later
-
-### Building
+List all torrent paths from Transmission.
 
 ```bash
-go build -o peerless main.go
+./peerless --host localhost --user admin --password secret list-torrents
+
+# Save to file (plain text)
+./peerless --host localhost --user admin --password secret list-torrents --output torrents.txt
 ```
 
-### Testing
+## ⚙️ Configuration
+
+### Authentication (Required)
+
+Peerless requires authentication for all operations:
 
 ```bash
-# Run all tests
-go test -v ./...
-
-# Run specific package tests
-go test -v ./pkg/client
-go test -v ./pkg/utils
-go test -v ./pkg/types
+./peerless --host <host> --user <username> --password <password> <command>
 ```
 
-### Project Structure
+**Required Parameters:**
+- `--host, -H`: Transmission server host
+- `--user, -u`: Transmission username
+- `--password, -p`: Transmission password
 
-```
-peerless/
-├── main.go              # CLI entry point
-├── pkg/
-│   ├── client/          # Transmission RPC client
-│   ├── output/          # Terminal output styling
-│   ├── types/           # Data structures
-│   └── utils/           # File system utilities
-├── go.mod               # Go module definition
-├── go.sum               # Dependency checksums
-├── .goreleaser.yaml     # Release configuration
-└── README.md            # This file
+**Example:**
+```bash
+./peerless --host 192.168.1.100 --user admin --password secret check
 ```
 
-## Dependencies
+### Optional Parameters
 
-- `github.com/urfave/cli/v3` - CLI framework
-- `github.com/charmbracelet/lipgloss` - Terminal styling
-- `github.com/charmbracelet/log` - Structured logging
-- `github.com/stretchr/testify` - Testing utilities
+- `--port, --po`: Transmission port (default: 9091)
+- `--verbose, -v`: Enable verbose output
+- `--debug, -d`: Enable debug output
 
-## Contributing
+## 🎨 Output Modes
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+### Console Output (Default)
 
-## License
+Styled terminal output with colors and formatting:
 
-This project is licensed under the MIT License.
+```
+Directory: /downloads/movies
+🔹 Found: 15/20 items
+❌ Missing: 5 items (12.3 GB)
+```
 
-## Troubleshooting
+### File Output (Plain Text)
 
-### Connection Issues
+Unstyled output suitable for scripts and automation:
 
-Peerless provides detailed error messages to help diagnose connection problems:
+```bash
+./peerless --host localhost --user admin --password secret check --output missing.txt
+```
 
-#### Authentication Errors
+**File Content:**
+```
+/downloads/movies/Missing.Movie.2023
+/downloads/movies/Another.Movie.2024
+```
+
+## 🔧 Transmission Setup
+
+### Enable RPC Access
+
+1. Open Transmission
+2. Go to **Edit → Preferences** (or **Transmission → Preferences** on macOS)
+3. Navigate to **Remote** or **Web** tab
+4. **Enable "Allow remote access"**
+5. Set **Username** and **Password**
+6. Note the **RPC port** (default: 9091)
+7. Click **OK**
+
+### Firewall Configuration
+
+Ensure your firewall allows traffic to the Transmission RPC port:
+- **Default Port**: 9091
+- **Protocol**: HTTP
+- **Source**: Your IP address or range
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Authentication Failed
 ```
 authentication failed: please check your username and password for Transmission at host:port
 ```
-**Solution**: Verify your Transmission username and password are correct.
+**Solution**: Verify your Transmission RPC username and password.
 
 #### Connection Refused
 ```
@@ -289,50 +197,194 @@ cannot connect to Transmission at host:port. Please ensure:
 2. RPC interface is enabled
 3. Host and port are correct
 ```
-**Solution**: Check that Transmission is running and RPC is enabled in settings.
-
-#### Port Issues
-```
-invalid port 99999: port must be between 1 and 65535
-```
-**Solution**: Use a valid port number (1-65535). Default is 9091.
-
-#### Host Resolution
-```
-cannot resolve host 'hostname'. Please check the hostname and ensure DNS is working correctly
-```
-**Solution**: Verify the hostname is correct and DNS resolution works.
+**Solution**: Check if Transmission is running and RPC is enabled.
 
 #### RPC Not Found
 ```
 Transmission RPC endpoint not found at host:port. Ensure Transmission is running and RPC is enabled
 ```
-**Solution**: Enable RPC interface in Transmission preferences.
+**Solution**: Enable RPC interface in Transmission settings.
 
-### General Fixes
+#### Port Issues
+```
+invalid port 99999: port must be between 1 and 65535
+```
+**Solution**: Use a valid port number (1-65535).
 
-- **Check Transmission Status**: Ensure Transmission application is running
-- **Enable RPC**: Go to Transmission Preferences → Remote/Web → Enable "Allow remote access"
-- **Verify Port**: Default RPC port is 9091
-- **Firewall Settings**: Ensure traffic is allowed to the RPC port
-- **Authentication**: Set username/password in Transmission RPC settings
+### Advanced Troubleshooting
 
-### Performance
+#### Enable Debug Logging
+```bash
+./peerless --host localhost --user admin --password secret --debug check
+```
 
-- Large directories may take time to process, especially when calculating sizes
-- Use `--verbose` to see progress information
-- Consider checking smaller directories individually for faster results
+#### Test Connection
+```bash
+# Test basic connectivity
+./peerless --host localhost --user admin --password secret list-directories
 
-### Color Output
+# Test with verbose output
+./peerless --host localhost --user admin --password secret --verbose check
+```
 
-- Colors are automatically disabled in non-terminal environments
-- Force monochrome output by piping to another command or redirecting to a file
+#### Verify Transmission Configuration
+1. Check Transmission is running: Open the application
+2. Verify RPC enabled: Preferences → Remote → "Allow remote access"
+3. Confirm credentials: Note exact username and password
+4. Check port: Default is 9091, verify if changed
 
-## Similar Tools
+## 📋 Examples
 
-- [transmission-remote](https://transmissionbt.com/) - Official Transmission CLI
-- [transmission-cli](https://github.com/transmission/transmission) - Command-line interface
+### Basic Workflow
+```bash
+# 1. Check what directories Transmission knows about
+./peerless --host localhost --user admin --password secret list-directories
 
-## Support
+# 2. Compare your media directory
+./peerless --host localhost --user admin --password secret check --dir /media/Movies
 
-For issues, feature requests, or questions, please open an issue on the project repository.
+# 3. Save missing items for later review
+./peerless --host localhost --user admin --password secret check --dir /media/Movies --output missing.txt
+
+# 4. Get complete torrent list
+./peerless --host localhost --user admin --password secret list-torrents --output all-torrents.txt
+```
+
+### Batch Operations
+```bash
+# Check multiple directories
+./peerless --host localhost --user admin --password secret \
+  check \
+  --dir /downloads/movies \
+  --dir /downloads/tv \
+  --dir /downloads/documentaries
+
+# Export all directories
+./peerless --host localhost --user admin --password secret \
+  list-directories --output directories.txt
+
+# Export all torrent paths
+./peerless --host localhost --user admin --password secret \
+  list-torrents --output torrents.txt
+```
+
+### Remote Management
+```bash
+# Connect to remote Transmission server
+./peerless --host 192.168.1.100 --user admin --password secret \
+  check --dir /media/server/Movies
+
+# Different port
+./peerless --host localhost --port 9092 --user admin --password secret \
+  list-directories
+```
+
+## 🏗️ Development
+
+### Building from Source
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd peerless
+
+# Build binary
+go build -o peerless main.go
+
+# Run tests
+go test -v ./...
+
+# Build release version
+goreleaser build --clean
+```
+
+### Project Structure
+
+```
+peerless/
+├── main.go              # CLI entry point and command definitions
+├── go.mod               # Go module dependencies
+├── go.sum               # Dependency checksums
+├── .goreleaser.yaml     # Release configuration
+├── README.md            # This file
+└── pkg/
+    ├── client/          # Transmission RPC client
+    │   ├── transmission.go
+    │   └── integration_test.go
+    ├── types/           # Data structures
+    │   └── types.go
+    ├── utils/           # File system utilities
+    │   ├── files.go
+    │   └── integration_test.go
+    └── output/          # Terminal styling
+        └── styles.go
+```
+
+### Dependencies
+
+- **[urfave/cli/v3](https://github.com/urfave/cli)**: Modern CLI framework
+- **[charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss)**: Terminal styling
+- **[charmbracelet/log](https://github.com/charmbracelet/log)**: Structured logging
+- **[stretchr/testify](https://github.com/stretchr/testify)**: Testing utilities
+
+## 🧪 Testing
+
+### Run Tests
+```bash
+# Run all tests
+go test -v ./...
+
+# Run specific package tests
+go test -v ./pkg/client
+go test -v ./pkg/utils
+
+# Run integration tests
+go test -v -run Integration ./pkg/client
+```
+
+### Test Coverage
+```bash
+# Run with coverage
+go test -v -cover ./...
+```
+
+## 📝 Contributing
+
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass: `go test -v ./...`
+6. Commit your changes: `git commit -m "Add amazing feature"`
+7. Push to branch: `git push origin feature/amazing-feature`
+8. Open a Pull Request
+
+### Development Guidelines
+
+- Follow Go conventions and best practices
+- Add comprehensive tests for new features
+- Update documentation for breaking changes
+- Ensure backward compatibility when possible
+- Keep code clean and well-documented
+
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🤝 Acknowledgments
+
+- [Transmission](https://transmissionbt.com/) - The excellent BitTorrent client
+- [urfave/cli](https://github.com/urfave/cli) - Powerful CLI framework
+- [Charmbracelet](https://charmbracelet.com/) - Beautiful terminal UI tools
+
+## 🆘 Support
+
+- **Issues**: [GitHub Issues](https://github.com/your-repo/peerless/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-repo/peerless/discussions)
+- **Documentation**: [Wiki](https://github.com/your-repo/peerless/wiki)
+
+---
+
+**Peerless** - Keep your torrent library organized and complete. 🚀
