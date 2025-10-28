@@ -46,9 +46,34 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check for HTTP authentication errors
+	switch resp.StatusCode {
+	case 401:
+		return "", fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 403:
+		return "", fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 404:
+		return "", fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
+	case 409:
+		// This is expected - Conflict means we need to retry with session ID
+		// But for GetSessionID, we should handle this differently
+		return "", fmt.Errorf("session conflict detected during initial connection")
+	case 500:
+		return "", fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	}
+
+	// Check for other HTTP errors
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
+	}
+
 	sessionID := resp.Header.Get("X-Transmission-Session-Id")
 	if sessionID == "" {
-		return "", fmt.Errorf("no session ID received")
+		if resp.StatusCode == 409 {
+			// Handle 409 Conflict for session ID properly
+			return "", fmt.Errorf("Transmission session conflict: retry required")
+		}
+		return "", fmt.Errorf("no session ID received from Transmission at %s:%d. Ensure RPC interface is enabled", c.config.Host, c.config.Port)
 	}
 
 	return sessionID, nil
@@ -89,6 +114,25 @@ func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo,
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	// Check for HTTP authentication errors
+	switch resp.StatusCode {
+	case 401:
+		return nil, fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 403:
+		return nil, fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 404:
+		return nil, fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
+	case 409:
+		return nil, fmt.Errorf("session conflict: invalid session ID. Re-authentication required")
+	case 500:
+		return nil, fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	}
+
+	// Check for other HTTP errors
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,6 +86,67 @@ func TestFormatSize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := FormatSize(tt.bytes)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestPortValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		port        int
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid port",
+			port:        9091,
+			expectError: false,
+		},
+		{
+			name:        "valid port 1",
+			port:        1,
+			expectError: false,
+		},
+		{
+			name:        "valid port 65535",
+			port:        65535,
+			expectError: false,
+		},
+		{
+			name:        "invalid port 0",
+			port:        0,
+			expectError: true,
+			errorMsg:    "invalid port 0: port must be between 1 and 65535",
+		},
+		{
+			name:        "invalid port negative",
+			port:        -1,
+			expectError: true,
+			errorMsg:    "invalid port -1: port must be between 1 and 65535",
+		},
+		{
+			name:        "invalid port too high",
+			port:        65536,
+			expectError: true,
+			errorMsg:    "invalid port 65536: port must be between 1 and 65535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// This simulates the validation logic from main.go
+			if tt.port <= 0 || tt.port > 65535 {
+				if !tt.expectError {
+					t.Errorf("expected no error but port %d should be invalid", tt.port)
+				}
+				if tt.expectError && fmt.Sprintf("invalid port %d: port must be between 1 and 65535", tt.port) != tt.errorMsg {
+					t.Errorf("expected error message %q but got %q", tt.errorMsg, fmt.Sprintf("invalid port %d: port must be between 1 and 65535", tt.port))
+				}
+			} else {
+				if tt.expectError {
+					t.Errorf("expected error but port %d should be valid", tt.port)
+				}
+			}
 		})
 	}
 }

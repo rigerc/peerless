@@ -140,9 +140,21 @@ func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) 
 		return nil, "", fmt.Errorf("password (-p/--password) is required")
 	}
 
+	port := cmd.Int("port")
+
+	// Validate port range
+	if port <= 0 || port > 65535 {
+		return nil, "", fmt.Errorf("invalid port %d: port must be between 1 and 65535", port)
+	}
+
+	// Validate host format
+	if strings.TrimSpace(host) == "" {
+		return nil, "", fmt.Errorf("host cannot be empty")
+	}
+
 	cfg := types.Config{
-		Host:     host,
-		Port:     cmd.Int("port"),
+		Host:     strings.TrimSpace(host),
+		Port:     port,
 		User:     user,
 		Password: password,
 	}
@@ -158,7 +170,22 @@ func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) 
 	sessionID, err := client.GetSessionID()
 	if err != nil {
 		output.Logger.Error("Failed to get session ID", "error", err)
-		return nil, "", fmt.Errorf("error getting session ID: %w", err)
+
+		// Provide enhanced error messages for common issues
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "authentication failed") {
+			return nil, "", fmt.Errorf("authentication failed: please check your username and password for Transmission at %s:%d. %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "connection refused") || strings.Contains(errMsg, "connect: connection refused") {
+			return nil, "", fmt.Errorf("cannot connect to Transmission at %s:%d. Please ensure:\n1. Transmission is running\n2. RPC interface is enabled\n3. Host and port are correct\nOriginal error: %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "no such host") || strings.Contains(errMsg, "name resolution") {
+			return nil, "", fmt.Errorf("cannot resolve host '%s'. Please check the hostname and ensure DNS is working correctly. %w", cfg.Host, err)
+		} else if strings.Contains(errMsg, "timeout") {
+			return nil, "", fmt.Errorf("connection timeout to Transmission at %s:%d. Please check network connectivity and firewall settings. %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "RPC endpoint not found") {
+			return nil, "", fmt.Errorf("Transmission RPC interface not available at %s:%d. Please enable RPC in Transmission settings. %w", cfg.Host, cfg.Port, err)
+		} else {
+			return nil, "", fmt.Errorf("failed to connect to Transmission at %s:%d: %w", cfg.Host, cfg.Port, err)
+		}
 	}
 
 	output.Logger.Debug("Successfully obtained session ID")

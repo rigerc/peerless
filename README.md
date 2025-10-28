@@ -274,10 +274,48 @@ This project is licensed under the MIT License.
 
 ### Connection Issues
 
-- Ensure Transmission is running and RPC is enabled
-- Check that the host and port are correct
-- Verify firewall settings allow traffic to the RPC port
-- Confirm authentication credentials if required
+Peerless provides detailed error messages to help diagnose connection problems:
+
+#### Authentication Errors
+```
+authentication failed: please check your username and password for Transmission at host:port
+```
+**Solution**: Verify your Transmission username and password are correct.
+
+#### Connection Refused
+```
+cannot connect to Transmission at host:port. Please ensure:
+1. Transmission is running
+2. RPC interface is enabled
+3. Host and port are correct
+```
+**Solution**: Check that Transmission is running and RPC is enabled in settings.
+
+#### Port Issues
+```
+invalid port 99999: port must be between 1 and 65535
+```
+**Solution**: Use a valid port number (1-65535). Default is 9091.
+
+#### Host Resolution
+```
+cannot resolve host 'hostname'. Please check the hostname and ensure DNS is working correctly
+```
+**Solution**: Verify the hostname is correct and DNS resolution works.
+
+#### RPC Not Found
+```
+Transmission RPC endpoint not found at host:port. Ensure Transmission is running and RPC is enabled
+```
+**Solution**: Enable RPC interface in Transmission preferences.
+
+### General Fixes
+
+- **Check Transmission Status**: Ensure Transmission application is running
+- **Enable RPC**: Go to Transmission Preferences → Remote/Web → Enable "Allow remote access"
+- **Verify Port**: Default RPC port is 9091
+- **Firewall Settings**: Ensure traffic is allowed to the RPC port
+- **Authentication**: Set username/password in Transmission RPC settings
 
 ### Performance
 
