@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/urfave/cli/v3"
@@ -23,11 +24,32 @@ type TorrentInfo struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
 	DownloadDir string `json:"downloadDir"`
+	HashString  string `json:"hashString"`
+}
+
+type TorrentFile struct {
+	Name   string `json:"name"`
+	Length int64  `json:"length"`
+}
+
+type TorrentDetailedInfo struct {
+	ID          int           `json:"id"`
+	Name        string        `json:"name"`
+	DownloadDir string        `json:"downloadDir"`
+	HashString  string        `json:"hashString"`
+	Files       []TorrentFile `json:"files"`
 }
 
 type TransmissionResponse struct {
 	Arguments struct {
 		Torrents []TorrentInfo `json:"torrents"`
+	} `json:"arguments"`
+	Result string `json:"result"`
+}
+
+type TransmissionDetailedResponse struct {
+	Arguments struct {
+		Torrents []TorrentDetailedInfo `json:"torrents"`
 	} `json:"arguments"`
 	Result string `json:"result"`
 }
@@ -111,7 +133,7 @@ func main() {
 			},
 			&cli.IntFlag{
 				Name:    "port",
-				Aliases: []string{"p"},
+				Aliases: []string{"po"},
 				Value:   9091,
 				Usage:   "Transmission port",
 			},
@@ -140,17 +162,23 @@ func main() {
 				Aliases: []string{"o"},
 				Usage:   "Output file for absolute paths of missing items",
 			},
+			&cli.BoolFlag{
+				Name:    "get-all-torrents",
+				Aliases: []string{"ga"},
+				Usage:   "Get absolute paths of all torrents in Transmission",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			cfg := Config{
 				Host:     cmd.String("host"),
 				Port:     cmd.Int("port"),
 				User:     cmd.String("user"),
-				Password: cmd.String("pass"),
+				Password: cmd.String("password"),
 				Dirs:     cmd.StringSlice("dir"),
 			}
 
 			getDirs := cmd.Bool("get-directories")
+			getAllTorrents := cmd.Bool("get-all-torrents")
 			outputFile := cmd.String("output")
 
 			// Get session ID
@@ -164,6 +192,20 @@ func main() {
 				err := listDownloadDirectories(cfg, sessionID)
 				if err != nil {
 					return fmt.Errorf("error listing directories: %w", err)
+				}
+				return nil
+			}
+
+			// If get-all-torrents flag is set, output all torrent paths and exit
+			if getAllTorrents {
+				paths, err := getAllTorrentPaths(cfg, sessionID)
+				if err != nil {
+					return fmt.Errorf("error getting all torrent paths: %w", err)
+				}
+
+				// Output each path on its own line
+				for _, path := range paths {
+					fmt.Println(path)
 				}
 				return nil
 			}
@@ -364,6 +406,68 @@ func getTorrents(cfg Config, sessionID string) ([]TorrentInfo, error) {
 	}
 
 	return result.Arguments.Torrents, nil
+}
+
+func getAllTorrentPaths(cfg Config, sessionID string) ([]string, error) {
+	url := fmt.Sprintf("http://%s:%d/transmission/rpc", cfg.Host, cfg.Port)
+
+	reqBody := TransmissionRequest{
+		Method: "torrent-get",
+		Arguments: map[string]interface{}{
+			"fields": []string{"id", "name", "downloadDir", "hashString"},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Transmission-Session-Id", sessionID)
+
+	if cfg.User != "" {
+		req.SetBasicAuth(cfg.User, cfg.Password)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result TransmissionResponse
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Result != "success" {
+		return nil, fmt.Errorf("transmission returned: %s", result.Result)
+	}
+
+	var paths []string
+	for _, torrent := range result.Arguments.Torrents {
+		// Construct absolute path using the torrent name and download directory
+		absPath := filepath.Join(torrent.DownloadDir, torrent.Name)
+		paths = append(paths, absPath)
+	}
+
+	// Sort paths alphabetically
+	sort.Strings(paths)
+
+	return paths, nil
 }
 
 func listDownloadDirectories(cfg Config, sessionID string) error {
