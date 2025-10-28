@@ -1,6 +1,8 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
 
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
@@ -20,15 +22,16 @@ builds:
       - darwin
     goarch:
       - amd64
-      - arm64
-  - env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
+      - 386
       - arm
     goarm:
       - 7
+    # Exclude ARM builds for non-Linux OSes
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: arm
 
 archives:
   - formats: [tar.gz]
@@ -52,7 +55,5 @@ changelog:
 
 release:
   footer: >-
-
     ---
-
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

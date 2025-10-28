@@ -3,7 +3,8 @@
     "allow": [
       "Bash(go get:*)",
       "Bash(go build:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "mcp__context7__resolve-library-id"
     ],
     "deny": [],
     "ask": []
