@@ -1,0 +1,241 @@
+name: Test
+
+on:
+  push:
+    tags:
+      - 'v*'
+  branches:
+    - main
+    - develop
+  pull_request:
+
+env:
+  GO_VERSION: '1.25.3'
+
+jobs:
+  test-amd64:
+    name: Test AMD64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: linux
+          fail_ci_if_error: false
+
+  test-arm64:
+    name: Test ARM64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+  test-arm7:
+    name: Test ARM-7 (QEMU)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm/v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build and test with Docker
+        run: |
+          # Create a Dockerfile for ARM-7 testing
+          cat > Dockerfile.arm7 << 'EOF'
+          FROM --platform=linux/arm/v7 golang:${{ env.GO_VERSION }}-bullseye
+
+          WORKDIR /app
+
+          # Install git if not present
+          RUN apt-get update && apt-get install -y git
+
+          # Copy go mod files
+          COPY go.mod go.sum ./
+          RUN go mod download
+
+          # Copy source code
+          COPY . .
+
+          # Run tests
+          RUN go test -v ./...
+          EOF
+
+          # Build and run the Docker image
+          docker build --platform linux/arm/v7 -f Dockerfile.arm7 -t peerless-arm7-test .
+
+      - name: Run tests in Docker
+        run: |
+          docker run --platform linux/arm/v7 --rm peerless-arm7-test
+
+  test-windows:
+    name: Test Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+  test-macos:
+    name: Test macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+  build-test:
+    name: Build and Test Multiple Architectures
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+        goos: [linux, windows, darwin]
+        exclude:
+          - goos: windows
+            goarch: arm
+          - goos: darwin
+            goarch: arm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.goarch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.goarch }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binary
+        run: |
+          go build -ldflags="-w -s" -o peerless-${{ matrix.goos }}-${{ matrix.goarch }} main.go
+
+      - name: Run basic functionality test
+        run: |
+          echo "Testing binary: peerless-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ./peerless-${{ matrix.goos }}-${{ matrix.goarch }} --help
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: peerless-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: peerless-${{ matrix.goos }}-${{ matrix.goarch }}
+          retention-days: 30

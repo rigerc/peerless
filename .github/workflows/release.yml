@@ -47,18 +47,30 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.x'
+          go-version: '1.25.3'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('**/go.sum') }}
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Build & Test
         run: |
           if [[ "${{matrix.goarch}}" == "arm" && -n "${{matrix.goarm}}" ]]; then
             docker run --rm --platform linux/arm/v${{matrix.goarm}} \
-              -v $PWD:/src -w /src golang:1.23 \
-              bash -c "go build -v ./... && go test -v ./..."
+              -v $PWD:/src -w /src golang:1.25.3 \
+              bash -c "go mod download && go build -v ./... && go test -v ./..."
           else
             go build -v ./...
             go test -v ./...
-          
+          fi
+
   release:
     needs: test
     runs-on: ubuntu-latest
