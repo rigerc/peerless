@@ -55,9 +55,12 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 	case 404:
 		return "", fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
 	case 409:
-		// This is expected - Conflict means we need to retry with session ID
-		// But for GetSessionID, we should handle this differently
-		return "", fmt.Errorf("session conflict detected during initial connection")
+		// This is the normal session establishment flow - extract session ID from response
+		sessionID := resp.Header.Get("X-Transmission-Session-Id")
+		if sessionID == "" {
+			return "", fmt.Errorf("session conflict response missing X-Transmission-Session-Id header from Transmission at %s:%d", c.config.Host, c.config.Port)
+		}
+		return sessionID, nil
 	case 500:
 		return "", fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
 	}
@@ -67,12 +70,9 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 		return "", fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
 	}
 
+	// For successful responses (200 OK), extract session ID from header
 	sessionID := resp.Header.Get("X-Transmission-Session-Id")
 	if sessionID == "" {
-		if resp.StatusCode == 409 {
-			// Handle 409 Conflict for session ID properly
-			return "", fmt.Errorf("Transmission session conflict: retry required")
-		}
 		return "", fmt.Errorf("no session ID received from Transmission at %s:%d. Ensure RPC interface is enabled", c.config.Host, c.config.Port)
 	}
 
