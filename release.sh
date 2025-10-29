@@ -123,6 +123,25 @@ check_goreleaser() {
     fi
 }
 
+# Function to check GitHub token
+check_github_token() {
+    if [[ -z "$GITHUB_TOKEN" ]]; then
+        print_warning "GITHUB_TOKEN environment variable is not set"
+        print_warning "Git operations will use your default credentials"
+        print_info "Set GITHUB_TOKEN for automated releases:"
+        print_info "  export GITHUB_TOKEN=\"ghp_your_token_here\""
+        echo
+        read -p "Do you want to continue without GITHUB_TOKEN? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Release cancelled"
+            exit 0
+        fi
+    else
+        print_info "GITHUB_TOKEN is set (length: ${#GITHUB_TOKEN} characters)"
+    fi
+}
+
 # Main script
 main() {
     local increment_type=${1:-}
@@ -144,6 +163,7 @@ main() {
     print_info "Running pre-flight checks..."
     check_git_status
     check_git_branch
+    check_github_token
     check_goreleaser
 
     # Get current version
@@ -169,13 +189,28 @@ main() {
         exit 0
     fi
 
+    # Configure git to use GitHub token for authentication if available
+    local git_remote_url="origin"
+    local remote_url=""
+    if [[ -n "$GITHUB_TOKEN" ]]; then
+        print_info "Using GitHub token for authentication"
+        # Extract the remote URL and modify it to include the token
+        remote_url=$(git remote get-url "$git_remote_url" 2>/dev/null)
+        if [[ "$remote_url" =~ ^https://github.com/ ]]; then
+            # Convert HTTPS URL to include token
+            local token_url="${remote_url/https:\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
+            git remote set-url "$git_remote_url" "$token_url"
+            print_info "Updated remote URL to use token authentication"
+        fi
+    fi
+
     # Ensure we're up to date with remote
     print_info "Fetching latest changes from remote..."
-    git fetch origin
+    git fetch "$git_remote_url"
 
     local current_branch=$(git rev-parse --abbrev-ref HEAD)
-    if ! git merge origin/"$current_branch" --ff-only; then
-        print_error "Failed to merge changes from origin/$current_branch"
+    if ! git merge "$git_remote_url"/"$current_branch" --ff-only; then
+        print_error "Failed to merge changes from $git_remote_url/$current_branch"
         print_error "Please resolve conflicts and try again"
         exit 1
     fi
@@ -186,7 +221,22 @@ main() {
 
     # Push tag
     print_info "Pushing tag to remote..."
-    git push origin "v$new_version"
+    if git push "$git_remote_url" "v$new_version"; then
+        print_success "Tag v$new_version pushed successfully"
+    else
+        print_error "Failed to push tag v$new_version"
+        # Restore original remote URL if we modified it
+        if [[ -n "$GITHUB_TOKEN" && -n "$remote_url" ]]; then
+            git remote set-url "$git_remote_url" "$remote_url" 2>/dev/null || true
+        fi
+        exit 1
+    fi
+
+    # Restore original remote URL if we modified it
+    if [[ -n "$GITHUB_TOKEN" && -n "$remote_url" ]]; then
+        git remote set-url "$git_remote_url" "$remote_url"
+        print_info "Restored original remote URL"
+    fi
 
     # Run goreleaser
     print_info "Running goreleaser..."

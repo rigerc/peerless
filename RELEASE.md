@@ -7,15 +7,31 @@ This document describes how to create releases for Peerless using the automated 
 1. **Clean Git Working Directory**: All changes must be committed
 2. **Main Branch**: Releases should be made from the main/master branch
 3. **Goreleaser**: Install goreleaser (https://goreleaser.com/install/)
-4. **GitHub Token**: For publishing releases, you need a GitHub token with `repo` scope
+4. **GitHub Token**: For automated releases, you need a GitHub token with `repo` scope
 
 ```bash
 # Install goreleaser (macOS example)
 brew install goreleaser
 
-# Set GitHub token (environment variable)
-export GITHUB_TOKEN="your_github_token_here"
+# Set GitHub token (environment variable) - optional but recommended
+export GITHUB_TOKEN="ghp_your_github_token_here"
+
+# Or pass token inline:
+make release GITHUB_TOKEN="ghp_your_github_token_here"
 ```
+
+### GitHub Token Benefits
+
+- ✅ **Automated Authentication**: No interactive git credential prompts
+- ✅ **CI/CD Friendly**: Works in automated environments
+- ✅ **Secure**: Token-based authentication instead of SSH keys
+- ✅ **Consistent**: Same authentication for both git operations and goreleaser
+
+### Token Scopes Required
+
+Your GitHub token needs the following scopes:
+- `repo` - Full control of private repositories
+- `workflow` (if using GitHub Actions) - Update GitHub Action workflows
 
 ## Release Methods
 

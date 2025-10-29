@@ -6,6 +6,8 @@ GORELEASER=goreleaser
 GOFMT=gofmt
 GO_FILES=$(shell find . -name "*.go" -type f | grep -v vendor)
 VERSION=$(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+GITHUB_TOKEN ?= $(GITHUB_TOKEN)
+DRY_RUN ?= false
 
 # Default target
 .PHONY: help
@@ -63,20 +65,58 @@ lint: fmt vet ## Run all linting (format and vet)
 .PHONY: release-patch
 release-patch: ## Create patch release (e.g., 0.1.6 -> 0.1.7)
 	@echo "Creating patch release..."
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "⚠️  GITHUB_TOKEN not set, using default git credentials"; \
+	else \
+		echo "✅ GITHUB_TOKEN is set, using token authentication"; \
+	fi
 	./release.sh patch
 
 .PHONY: release-minor
 release-minor: ## Create minor release (e.g., 0.1.6 -> 0.2.0)
 	@echo "Creating minor release..."
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "⚠️  GITHUB_TOKEN not set, using default git credentials"; \
+	else \
+		echo "✅ GITHUB_TOKEN is set, using token authentication"; \
+	fi
 	./release.sh minor
 
 .PHONY: release-major
 release-major: ## Create major release (e.g., 0.1.6 -> 1.0.0)
 	@echo "Creating major release..."
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "⚠️  GITHUB_TOKEN not set, using default git credentials"; \
+	else \
+		echo "✅ GITHUB_TOKEN is set, using token authentication"; \
+	fi
 	./release.sh major
 
 .PHONY: release
 release: release-patch ## Default to patch release
+
+# Release targets with explicit token check
+.PHONY: release-with-token
+release-with-token: ## Ensure GITHUB_TOKEN is set before releasing
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "❌ GITHUB_TOKEN is required for this target"; \
+		echo "Set it with: export GITHUB_TOKEN=\"your_token_here\""; \
+		echo "Or run: make release GITHUB_TOKEN=your_token_here"; \
+		exit 1; \
+	fi
+	@echo "✅ GITHUB_TOKEN verified, proceeding with release..."
+	$(MAKE) release-patch
+
+.PHONY: release-dry-run
+release-dry-run: ## Simulate release without actually releasing
+	@echo "🔍 Simulating release process..."
+	@echo "Current version: $(VERSION)"
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "⚠️  Would use default git credentials"; \
+	else \
+		echo "✅ Would use GITHUB_TOKEN for authentication"; \
+	fi
+	@echo "To perform an actual release, run: make release"
 
 # Installation targets
 .PHONY: install
@@ -109,6 +149,17 @@ version: ## Show current version
 .PHONY: check-dirty
 check-dirty: ## Check if working directory is dirty
 	@! git diff-index --quiet HEAD -- && (echo "Working directory is dirty" && exit 1) || echo "Working directory is clean"
+
+.PHONY: check-token
+check-token: ## Check GitHub token status
+	@if [ -z "$(GITHUB_TOKEN)" ]; then \
+		echo "❌ GITHUB_TOKEN is not set"; \
+		echo "Set it with: export GITHUB_TOKEN=\"ghp_your_token_here\""; \
+		echo "Or run: make target GITHUB_TOKEN=your_token"; \
+	else \
+		echo "✅ GITHUB_TOKEN is set (length: $${#GITHUB_TOKEN} characters)"; \
+		echo "Token starts with: $$(echo $(GITHUB_TOKEN) | cut -c1-10)..."; \
+	fi
 
 # Quick development workflow
 .PHONY: dev
