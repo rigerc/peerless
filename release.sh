@@ -167,8 +167,9 @@ main() {
     check_goreleaser
 
     # Get current version
-    local current_version=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-    print_info "Current version: $current_version"
+    local current_version_raw=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+    local current_version=$(echo "$current_version_raw" | sed 's/^v//')
+    print_info "Current version: $current_version_raw"
 
     # Calculate new version
     local new_version=$(increment_version "$current_version" "$increment_type")
