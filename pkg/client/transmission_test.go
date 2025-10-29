@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,7 +52,7 @@ func TestGetSessionID(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		sessionID, err := client.GetSessionID()
+		sessionID, err := client.GetSessionID(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, "test-session-id-123", sessionID)
 	})
@@ -78,7 +79,7 @@ func TestGetSessionID(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		sessionID, err := client.GetSessionID()
+		sessionID, err := client.GetSessionID(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, "auth-session-id", sessionID)
 	})
@@ -97,7 +98,7 @@ func TestGetSessionID(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		sessionID, err := client.GetSessionID()
+		sessionID, err := client.GetSessionID(context.Background())
 		assert.Error(t, err)
 		assert.Equal(t, "", sessionID)
 		assert.Contains(t, err.Error(), "no session ID received")
@@ -110,7 +111,7 @@ func TestGetSessionID(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		sessionID, err := client.GetSessionID()
+		sessionID, err := client.GetSessionID(context.Background())
 		assert.Error(t, err)
 		assert.Equal(t, "", sessionID)
 	})
@@ -168,7 +169,7 @@ func TestGetTorrents(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		torrents, err := client.GetTorrents(sessionID)
+		torrents, err := client.GetTorrents(context.Background(), sessionID)
 		require.NoError(t, err)
 
 		assert.Len(t, torrents, 2)
@@ -206,7 +207,7 @@ func TestGetTorrents(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		torrents, err := client.GetTorrents(sessionID)
+		torrents, err := client.GetTorrents(context.Background(), sessionID)
 		assert.Error(t, err)
 		assert.Nil(t, torrents)
 		assert.Contains(t, err.Error(), "transmission returned: error")
@@ -259,7 +260,7 @@ func TestGetAllTorrentPaths(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		paths, err := client.GetAllTorrentPaths(sessionID)
+		paths, err := client.GetAllTorrentPaths(context.Background(), sessionID)
 		require.NoError(t, err)
 
 		// Verify paths are sorted alphabetically
@@ -320,7 +321,7 @@ func TestListDownloadDirectories(t *testing.T) {
 
 		// Capture stdout to verify output
 		// This test just verifies no error is returned
-		err := client.ListDownloadDirectories(sessionID)
+		err := client.ListDownloadDirectories(context.Background(), sessionID)
 		require.NoError(t, err)
 	})
 }

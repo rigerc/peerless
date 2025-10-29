@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"peerless/pkg/constants"
 )
 
 func GetSize(path string) (int64, error) {
@@ -20,12 +22,15 @@ func GetSize(path string) (int64, error) {
 
 	// For directories, calculate total size recursively
 	var totalSize int64
-	err = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // Skip errors, continue walking
 		}
-		if !info.IsDir() {
-			totalSize += info.Size()
+		if !d.IsDir() {
+			fileInfo, err := d.Info()
+			if err == nil {
+				totalSize += fileInfo.Size()
+			}
 		}
 		return nil
 	})
@@ -34,14 +39,13 @@ func GetSize(path string) (int64, error) {
 }
 
 func FormatSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
+	if bytes < constants.BytesPerKB {
 		return fmt.Sprintf("%d B", bytes)
 	}
 
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
+	div, exp := int64(constants.BytesPerKB), 0
+	for n := bytes / constants.BytesPerKB; n >= constants.BytesPerKB; n /= constants.BytesPerKB {
+		div *= constants.BytesPerKB
 		exp++
 	}
 
@@ -76,7 +80,7 @@ func SanitizeString(s string) string {
 			continue
 		}
 		// Skip specific Unicode formatting characters
-		if r == '\u200E' || r == '\u200F' || r == '\u202A' || r == '\u202B' || r == '\u202C' || r == '\u202D' || r == '\u202E' {
+		if r == constants.LTRMark || r == constants.RTLMark || r == constants.LRE || r == constants.RLE || r == constants.PDF || r == constants.LRO || r == constants.RLO {
 			continue
 		}
 		result.WriteRune(r)

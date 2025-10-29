@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,26 +10,30 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
+	"peerless/pkg/constants"
 	"peerless/pkg/types"
 	"peerless/pkg/utils"
 )
 
 type TransmissionClient struct {
-	config types.Config
+	config     types.Config
+	httpClient *http.Client
 }
 
 func NewTransmissionClient(config types.Config) *TransmissionClient {
 	return &TransmissionClient{
 		config: config,
+		httpClient: &http.Client{
+			Timeout: constants.HTTPTimeout,
+		},
 	}
 }
 
-func (c *TransmissionClient) GetSessionID() (string, error) {
+func (c *TransmissionClient) GetSessionID(ctx context.Context) (string, error) {
 	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte("{}")))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte("{}")))
 	if err != nil {
 		return "", err
 	}
@@ -37,10 +42,7 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 		req.SetBasicAuth(c.config.User, c.config.Password)
 	}
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -79,7 +81,7 @@ func (c *TransmissionClient) GetSessionID() (string, error) {
 	return sessionID, nil
 }
 
-func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo, error) {
+func (c *TransmissionClient) GetTorrents(ctx context.Context, sessionID string) ([]types.TorrentInfo, error) {
 	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
 
 	reqBody := types.TransmissionRequest{
@@ -94,7 +96,7 @@ func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo,
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +108,7 @@ func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo,
 		req.SetBasicAuth(c.config.User, c.config.Password)
 	}
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -152,8 +151,8 @@ func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo,
 	return result.Arguments.Torrents, nil
 }
 
-func (c *TransmissionClient) GetAllTorrentPaths(sessionID string) ([]string, error) {
-	torrents, err := c.GetTorrents(sessionID)
+func (c *TransmissionClient) GetAllTorrentPaths(ctx context.Context, sessionID string) ([]string, error) {
+	torrents, err := c.GetTorrents(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +172,8 @@ func (c *TransmissionClient) GetAllTorrentPaths(sessionID string) ([]string, err
 }
 
 // GetDownloadDirectories returns download directories with their torrent counts
-func (c *TransmissionClient) GetDownloadDirectories(sessionID string) ([]utils.DirectoryInfo, error) {
-	torrents, err := c.GetTorrents(sessionID)
+func (c *TransmissionClient) GetDownloadDirectories(ctx context.Context, sessionID string) ([]utils.DirectoryInfo, error) {
+	torrents, err := c.GetTorrents(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -201,14 +200,14 @@ func (c *TransmissionClient) GetDownloadDirectories(sessionID string) ([]utils.D
 }
 
 // ListDownloadDirectories prints download directories (for backward compatibility)
-func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
-	dirs, err := c.GetDownloadDirectories(sessionID)
+func (c *TransmissionClient) ListDownloadDirectories(ctx context.Context, sessionID string) error {
+	dirs, err := c.GetDownloadDirectories(ctx, sessionID)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Println(strings.Repeat("-", constants.SeparatorWidth))
 
 	for _, d := range dirs {
 		fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
