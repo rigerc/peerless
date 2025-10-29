@@ -65,6 +65,8 @@ Compare local directories with Transmission torrents to find missing items.
 **Flags:**
 - `--dir, -d`: Directory to check (can be specified multiple times)
 - `--output, -o`: Save missing items to file (unstyled output)
+- `--rm, --delete, --remove`: Delete missing files after confirmation (DESTRUCTIVE)
+- `--dry-run, --dry, --simulate`: Show what would be deleted without actually deleting files
 
 **Example Output:**
 ```
@@ -160,6 +162,77 @@ Unstyled output suitable for scripts and automation:
 /downloads/movies/Missing.Movie.2023
 /downloads/movies/Another.Movie.2024
 ```
+
+## 🗑️ File Management
+
+### Delete Missing Files
+
+Peerless can automatically delete files and directories that are not found in your Transmission torrents.
+
+**⚠️ IMPORTANT:** This is a destructive action. Always use `--dry-run` first!
+
+#### Safety Features
+
+- **Confirmation Required**: Must type "yes" to confirm deletion
+- **Detailed Preview**: Shows all files/directories with sizes before deletion
+- **Dry Run Mode**: Preview what would be deleted without actually deleting
+- **No Conflicts**: Cannot use `--rm` and `--dry-run` together
+- **Error Handling**: Reports any files that failed to delete
+
+#### Usage Examples
+
+```bash
+# Dry run - preview what would be deleted (SAFE)
+./peerless --host localhost --user admin --password secret check --dry-run
+
+# Actually delete missing files (after review)
+./peerless --host localhost --user admin --password secret check --rm
+
+# Check specific directory and delete missing files
+./peerless check --dir /downloads/movies --rm
+```
+
+#### Dry Run Output Example
+```
+🔍 DRY RUN MODE - No files will actually be deleted
+
+Files and directories that WOULD be deleted:
+  1. /downloads/movies/Old.Movie.2023 (2.5 GB)
+  2. /downloads/movies/Another.Movie.2024 (1.8 GB)
+  3. /downloads/movies/Temp.Directory (512 MB)
+
+Total that would be deleted: 3 items (4.81 GB)
+
+🔍 DRY RUN COMPLETED - No files were actually deleted
+💡 To actually delete these files, run the same command with --rm instead of --dry-run
+```
+
+#### Actual Deletion Process
+```
+⚠️  DELETE MODE ENABLED - This will permanently delete files!
+
+Files and directories to be deleted:
+  1. /downloads/movies/Old.Movie.2023 (2.5 GB)
+  2. /downloads/movies/Another.Movie.2024 (1.8 GB)
+
+Total to delete: 2 items (4.3 GB)
+
+❓ Are you sure you want to delete these files? This action cannot be undone! (yes/No): yes
+
+⚠️  Deleting files...
+
+✅ Successfully deleted 2 items (4.3 GB)
+🎉 All missing files deleted successfully!
+```
+
+#### Available Flags
+
+- `--rm`: Delete missing files after confirmation
+- `--delete`: Same as `--rm`
+- `--remove`: Same as `--rm`
+- `--dry-run`: Preview what would be deleted without actually deleting
+- `--dry`: Same as `--dry-run`
+- `--simulate`: Same as `--dry-run`
 
 ## 🔧 Transmission Setup
 

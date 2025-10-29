@@ -69,6 +69,16 @@ func main() {
 						Aliases: []string{"o"},
 						Usage:   "Output file for absolute paths of missing items",
 					},
+					&cli.BoolFlag{
+						Name:    "rm",
+						Aliases: []string{"delete", "remove"},
+						Usage:   "Delete missing files after confirmation (DESTRUCTIVE)",
+					},
+					&cli.BoolFlag{
+						Name:    "dry-run",
+						Aliases: []string{"dry", "simulate"},
+						Usage:   "Show what would be deleted without actually deleting files",
+					},
 				},
 				Action: runCheck,
 			},
@@ -196,10 +206,19 @@ func createClient(ctx context.Context, cmd *cli.Command) (*client.TransmissionCl
 func runCheck(ctx context.Context, cmd *cli.Command) error {
 	dirs := cmd.StringSlice("dir")
 	outputFile := cmd.String("output")
+	deleteMissing := cmd.Bool("rm")
+	dryRun := cmd.Bool("dry-run")
 
 	// If no directories specified, use current directory
 	if len(dirs) == 0 {
 		dirs = []string{"."}
+	}
+
+	// Validate conflicting options
+	if deleteMissing && dryRun {
+		output.PrintError("❌ Cannot use --rm and --dry-run together")
+		output.PrintInfo("💡 Use --dry-run to preview what would be deleted, then use --rm to actually delete")
+		return fmt.Errorf("conflicting options: --rm and --dry-run cannot be used together")
 	}
 
 	output.Logger.Info("Starting directory check", "directories", dirs)
@@ -336,6 +355,136 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 		}
 		fmt.Println()
 		output.PrintSuccess(fmt.Sprintf("Wrote %d missing item paths to: %s", len(missingPaths), outputFile))
+	}
+
+	// Handle deletion of missing files if requested
+	if (deleteMissing || dryRun) && len(missingPaths) > 0 {
+		if dryRun {
+			fmt.Println()
+			output.PrintInfo("🔍 DRY RUN MODE - No files will actually be deleted")
+			fmt.Println()
+		} else {
+			fmt.Println()
+			output.PrintWarning("⚠️  DELETE MODE ENABLED - This will permanently delete files!")
+			fmt.Println()
+		}
+
+		// Show what will be deleted
+		headerText := "Files and directories to be deleted:"
+		if dryRun {
+			headerText = "Files and directories that WOULD be deleted:"
+		}
+		output.PrintError(headerText)
+
+		for i, path := range missingPaths {
+			// Get file info for display
+			if info, err := os.Stat(path); err == nil {
+				sizeStr := ""
+				if !info.IsDir() {
+					sizeStr = fmt.Sprintf(" (%s)", utils.FormatSize(info.Size()))
+				}
+				fmt.Printf("  %d. %s%s\n", i+1, path, sizeStr)
+			} else {
+				fmt.Printf("  %d. %s (error getting info)\n", i+1, path)
+			}
+		}
+		fmt.Println()
+
+		// Calculate total size
+		var totalSize int64
+		for _, path := range missingPaths {
+			if size, err := utils.GetSize(path); err == nil {
+				totalSize += size
+			}
+		}
+
+		actionText := "Total to delete:"
+		if dryRun {
+			actionText = "Total that would be deleted:"
+		}
+		fmt.Printf("%s %d items (%s)\n", actionText, len(missingPaths), utils.FormatSize(totalSize))
+		fmt.Println()
+
+		if dryRun {
+			// In dry run mode, just show what would happen
+			output.PrintInfo("🔍 DRY RUN COMPLETED - No files were actually deleted")
+			fmt.Println()
+			output.PrintSuccess("💡 To actually delete these files, run the same command with --rm instead of --dry-run")
+		} else {
+			// Ask for confirmation for actual deletion
+			fmt.Print("❓ Are you sure you want to delete these files? This action cannot be undone! (yes/No): ")
+			var response string
+			fmt.Scanln(&response)
+
+			response = strings.ToLower(strings.TrimSpace(response))
+			if response == "yes" || response == "y" {
+				fmt.Println()
+				output.PrintWarning("Deleting files...")
+
+				var deletedCount int
+				var deletedSize int64
+				var failedDeletions []string
+
+				for _, path := range missingPaths {
+					output.Logger.Debug("Attempting to delete", "path", path)
+
+					var err error
+					var size int64
+
+					// Get file info once and use it for both size and deletion
+					var info os.FileInfo
+					info, err = os.Stat(path)
+					if err == nil {
+						if !info.IsDir() {
+							size = info.Size()
+						}
+
+						// Attempt deletion
+						if info.IsDir() {
+							err = os.RemoveAll(path) // Remove directory and contents
+						} else {
+							err = os.Remove(path) // Remove file
+						}
+					} else {
+						err = fmt.Errorf("file not found: %v", err)
+					}
+
+					if err != nil {
+						output.Logger.Error("Failed to delete", "path", path, "error", err)
+						output.PrintError(fmt.Sprintf("❌ Failed to delete %s: %v", path, err))
+						failedDeletions = append(failedDeletions, path)
+					} else {
+						output.Logger.Debug("Successfully deleted", "path", path)
+						deletedCount++
+						deletedSize += size
+					}
+				}
+
+				fmt.Println()
+				if deletedCount > 0 {
+					output.PrintSuccess(fmt.Sprintf("✅ Successfully deleted %d items (%s)", deletedCount, utils.FormatSize(deletedSize)))
+				}
+
+				if len(failedDeletions) > 0 {
+					fmt.Println()
+					output.PrintError(fmt.Sprintf("❌ Failed to delete %d items:", len(failedDeletions)))
+					for _, path := range failedDeletions {
+						fmt.Printf("  • %s\n", path)
+					}
+				}
+
+				if len(failedDeletions) == 0 && deletedCount > 0 {
+					fmt.Println()
+					output.PrintSuccess("🎉 All missing files deleted successfully!")
+				}
+			} else {
+				fmt.Println()
+				output.PrintInfo("❌ Deletion cancelled by user")
+			}
+		}
+	} else if (deleteMissing || dryRun) && len(missingPaths) == 0 {
+		fmt.Println()
+		output.PrintSuccess("✅ No missing files found - nothing to delete!")
 	}
 
 	output.Logger.Info("Directory check completed successfully")
