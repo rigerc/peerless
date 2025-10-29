@@ -174,10 +174,11 @@ Peerless can automatically delete files and directories that are not found in yo
 #### Safety Features
 
 - **Confirmation Required**: Must type "yes" to confirm deletion
-- **Detailed Preview**: Shows all files/directories with sizes before deletion
+- **Detailed Preview**: Shows all files/directories with sizes and types before deletion
 - **Dry Run Mode**: Preview what would be deleted without actually deleting
 - **No Conflicts**: Cannot use `--rm` and `--dry-run` together
 - **Error Handling**: Reports any files that failed to delete
+- **Size Information**: Shows individual file/directory sizes plus total size
 
 #### Usage Examples
 
@@ -197,11 +198,12 @@ Peerless can automatically delete files and directories that are not found in yo
 🔍 DRY RUN MODE - No files will actually be deleted
 
 Files and directories that WOULD be deleted:
-  1. /downloads/movies/Old.Movie.2023 (2.5 GB)
-  2. /downloads/movies/Another.Movie.2024 (1.8 GB)
-  3. /downloads/movies/Temp.Directory (512 MB)
+  1. /downloads/movies/Old.Movie.2023 (2.5 GB, file)
+  2. /downloads/movies/Another.Movie.2024 (1.8 GB, file)
+  3. /downloads/movies/Temp.Directory (512 MB, directory)
+  4. /downloads/movies/Old.Series.S01 (15.2 GB, directory)
 
-Total that would be deleted: 3 items (4.81 GB)
+Total that would be deleted: 4 items (20.3 GB)
 
 🔍 DRY RUN COMPLETED - No files were actually deleted
 💡 To actually delete these files, run the same command with --rm instead of --dry-run

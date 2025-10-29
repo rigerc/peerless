@@ -380,8 +380,16 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 			// Get file info for display
 			if info, err := os.Stat(path); err == nil {
 				sizeStr := ""
-				if !info.IsDir() {
-					sizeStr = fmt.Sprintf(" (%s)", utils.FormatSize(info.Size()))
+				if info.IsDir() {
+					// Calculate directory size for display
+					if dirSize, err := utils.GetSize(path); err == nil {
+						sizeStr = fmt.Sprintf(" (%s, directory)", utils.FormatSize(dirSize))
+					} else {
+						sizeStr = " (directory, size unknown)"
+					}
+				} else {
+					// Show file size
+					sizeStr = fmt.Sprintf(" (%s, file)", utils.FormatSize(info.Size()))
 				}
 				fmt.Printf("  %d. %s%s\n", i+1, path, sizeStr)
 			} else {
