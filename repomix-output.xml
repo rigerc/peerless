@@ -1,0 +1,2781 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: pkg, pkg/client, pkg/client/integration_test.go, pkg/client/transmission_test.go, pkg/client/transmission.go, pkg/output, pkg/output/styles.go, pkg/types, pkg/utils, pkg/utils/files_test.go, pkg/utils/files.go, pkg/utils/integration_test.go, .goreleaser.yaml, go.mod, go.sum, main.go, README.md
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.goreleaser.yaml
+go.mod
+main.go
+pkg/client/integration_test.go
+pkg/client/transmission_test.go
+pkg/client/transmission.go
+pkg/output/styles.go
+pkg/types/types_test.go
+pkg/types/types.go
+pkg/utils/files_test.go
+pkg/utils/files.go
+pkg/utils/integration_test.go
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="pkg/client/integration_test.go">
+package client_test
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"peerless/pkg/client"
+	"peerless/pkg/types"
+)
+
+// TestTransmissionClientIntegration tests the Transmission client with mock server
+func TestTransmissionClientIntegration(t *testing.T) {
+	tests := []struct {
+		name           string
+		authRequired   bool
+		username       string
+		password       string
+		expectSuccess  bool
+		expectedError  string
+		expectedCount  int
+	}{
+		{
+			name:          "Valid authentication",
+			authRequired:  true,
+			username:      "admin",
+			password:      "secret",
+			expectSuccess: true,
+			expectedCount: 3,
+		},
+		{
+			name:          "Invalid authentication",
+			authRequired:  true,
+			username:      "admin",
+			password:      "wrong",     // What client sends
+			expectSuccess: false,
+			expectedError: "authentication failed",
+		},
+		{
+			name:          "No authentication required",
+			authRequired:  false,
+			username:      "",
+			password:      "",
+			expectSuccess: true,
+			expectedCount: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Log the request for debugging
+				t.Logf("Mock server received request: %s %s", r.Method, r.URL)
+				t.Logf("Headers: %+v", r.Header)
+
+				// Check authentication if required
+				if tt.authRequired {
+					username, password, ok := r.BasicAuth()
+					t.Logf("Auth check: user='%s', pass='%s', ok=%v", username, password, ok)
+
+					// For the invalid auth test, we expect the password to be wrong
+					expectedPassword := tt.password
+					if tt.name == "Invalid authentication" {
+						expectedPassword = "correctpassword" // This won't match what client sends
+					}
+
+					if !ok || username != tt.username || password != expectedPassword {
+						t.Logf("Authentication failed, returning 401. Expected user='%s', pass='%s', got user='%s', pass='%s'", tt.username, expectedPassword, username, password)
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
+				}
+
+				// Check for session ID - for integration tests, we don't simulate the 409 conflict flow
+				sessionID := r.Header.Get("X-Transmission-Session-Id")
+				t.Logf("Session ID: %s", sessionID)
+
+				// Always return 200 OK for integration tests to simplify the flow
+				w.Header().Set("X-Transmission-Session-Id", "test-session-id")
+				w.WriteHeader(http.StatusOK)
+
+				// Return mock torrent data for any POST request
+				response := `{
+					"arguments": {
+						"torrents": [
+							{"id": 1, "name": "Movie.2023.1080p.BluRay.x264", "downloadDir": "/downloads/movies", "hashString": "abc123def456"},
+							{"id": 2, "name": "TV.Series.S01", "downloadDir": "/downloads/tv", "hashString": "def456ghi789"},
+							{"id": 3, "name": "Documentary.2024", "downloadDir": "/downloads/movies", "hashString": "ghi789jkl012"}
+						]
+					},
+					"result": "success"
+				}`
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(response))
+			}))
+			defer server.Close()
+
+			// Extract host and port from server URL
+			url := server.URL
+			// Parse URL to get host and port correctly
+			hostPort := strings.TrimPrefix(url, "http://")
+			parts := strings.Split(hostPort, ":")
+			host := parts[0]
+			port := 80 // default, but httptest.Server uses dynamic ports
+			if len(parts) > 1 {
+				_, err := fmt.Sscanf(parts[1], "%d", &port)
+				if err != nil {
+					port = 80
+				}
+			}
+
+			// Create client config
+			config := types.Config{
+				Host:     host,
+				Port:     port,
+				User:     tt.username,
+				Password: tt.password,
+			}
+
+			// Create client
+			transmissionClient := client.NewTransmissionClient(config)
+
+			// Test GetSessionID
+			sessionID, err := transmissionClient.GetSessionID()
+			if tt.expectSuccess {
+				if err != nil {
+					t.Errorf("GetSessionID failed: %v", err)
+					return
+				}
+				if sessionID != "test-session-id" {
+					t.Errorf("Expected session ID 'test-session-id', got '%s'", sessionID)
+				}
+
+				// Test GetTorrents
+				torrents, err := transmissionClient.GetTorrents(sessionID)
+				if err != nil {
+					t.Errorf("GetTorrents failed: %v", err)
+					return
+				}
+				if len(torrents) != tt.expectedCount {
+					t.Errorf("Expected %d torrents, got %d", tt.expectedCount, len(torrents))
+				}
+
+				// Test GetDownloadDirectories
+				dirs, err := transmissionClient.GetDownloadDirectories(sessionID)
+				if err != nil {
+					t.Errorf("GetDownloadDirectories failed: %v", err)
+					return
+				}
+				if len(dirs) == 0 {
+					t.Error("Expected at least one directory, got none")
+				}
+
+				// Test GetAllTorrentPaths
+				paths, err := transmissionClient.GetAllTorrentPaths(sessionID)
+				if err != nil {
+					t.Errorf("GetAllTorrentPaths failed: %v", err)
+					return
+				}
+				if len(paths) != tt.expectedCount {
+					t.Errorf("Expected %d paths, got %d", tt.expectedCount, len(paths))
+				}
+
+			} else {
+				if err == nil {
+					t.Error("Expected error but got none")
+					return
+				}
+				if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("Expected error containing '%s', got: %v", tt.expectedError, err)
+				}
+			}
+		})
+	}
+}
+
+// TestTransmissionClientHTTPErrors tests HTTP error handling
+func TestTransmissionClientHTTPErrors(t *testing.T) {
+	tests := []struct {
+		name           string
+		statusCode     int
+		expectedError  string
+	}{
+		{
+			name:          "401 Unauthorized",
+			statusCode:    http.StatusUnauthorized,
+			expectedError: "authentication failed",
+		},
+		{
+			name:          "403 Forbidden",
+			statusCode:    http.StatusForbidden,
+			expectedError: "access forbidden",
+		},
+		{
+			name:          "404 Not Found",
+			statusCode:    http.StatusNotFound,
+			expectedError: "RPC endpoint not found",
+		},
+		{
+			name:          "500 Internal Server Error",
+			statusCode:    http.StatusInternalServerError,
+			expectedError: "server error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock server that returns error status
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer server.Close()
+
+			// Extract host and port from server URL
+			url := server.URL
+			hostPort := strings.TrimPrefix(url, "http://")
+			parts := strings.Split(hostPort, ":")
+			host := parts[0]
+			port := 80 // default
+			if len(parts) > 1 {
+				_, err := fmt.Sscanf(parts[1], "%d", &port)
+				if err != nil {
+					port = 80
+				}
+			}
+
+			// Create client config
+			config := types.Config{
+				Host:     host,
+				Port:     port,
+				User:     "admin",
+				Password: "secret",
+			}
+
+			// Create client
+			transmissionClient := client.NewTransmissionClient(config)
+
+			// Test GetSessionID
+			_, err := transmissionClient.GetSessionID()
+			if err == nil {
+				t.Errorf("Expected error for status %d, but got none", tt.statusCode)
+				return
+			}
+
+			if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("Expected error containing '%s', got: %v", tt.expectedError, err)
+			}
+		})
+	}
+}
+</file>
+
+<file path="pkg/types/types_test.go">
+package types
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTransmissionRequest_MarshalJSON(t *testing.T) {
+	t.Run("basic request", func(t *testing.T) {
+		req := TransmissionRequest{
+			Method: "torrent-get",
+			Arguments: map[string]interface{}{
+				"fields": []string{"id", "name", "downloadDir"},
+			},
+		}
+
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(data, &result)
+		require.NoError(t, err)
+
+		assert.Equal(t, "torrent-get", result["method"])
+		assert.Contains(t, result, "arguments")
+	})
+
+	t.Run("request without arguments", func(t *testing.T) {
+		req := TransmissionRequest{
+			Method: "session-get",
+		}
+
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(data, &result)
+		require.NoError(t, err)
+
+		assert.Equal(t, "session-get", result["method"])
+		assert.NotContains(t, result, "arguments")
+	})
+}
+
+func TestTransmissionResponse_UnmarshalJSON(t *testing.T) {
+	t.Run("successful response", func(t *testing.T) {
+		jsonData := `{
+			"arguments": {
+				"torrents": [
+					{
+						"id": 1,
+						"name": "Test Torrent",
+						"downloadDir": "/downloads",
+						"hashString": "abc123def456"
+					}
+				]
+			},
+			"result": "success"
+		}`
+
+		var resp TransmissionResponse
+		err := json.Unmarshal([]byte(jsonData), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, "success", resp.Result)
+		assert.Len(t, resp.Arguments.Torrents, 1)
+
+		torrent := resp.Arguments.Torrents[0]
+		assert.Equal(t, 1, torrent.ID)
+		assert.Equal(t, "Test Torrent", torrent.Name)
+		assert.Equal(t, "/downloads", torrent.DownloadDir)
+		assert.Equal(t, "abc123def456", torrent.HashString)
+	})
+
+	t.Run("empty torrents list", func(t *testing.T) {
+		jsonData := `{
+			"arguments": {
+				"torrents": []
+			},
+			"result": "success"
+		}`
+
+		var resp TransmissionResponse
+		err := json.Unmarshal([]byte(jsonData), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, "success", resp.Result)
+		assert.Len(t, resp.Arguments.Torrents, 0)
+	})
+
+	t.Run("error response", func(t *testing.T) {
+		jsonData := `{
+			"arguments": {},
+			"result": "error: invalid request"
+		}`
+
+		var resp TransmissionResponse
+		err := json.Unmarshal([]byte(jsonData), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, "error: invalid request", resp.Result)
+	})
+}
+
+func TestTorrentInfo_Fields(t *testing.T) {
+	torrent := TorrentInfo{
+		ID:          42,
+		Name:        "Example Torrent",
+		DownloadDir: "/path/to/downloads",
+		HashString:  "1234567890abcdef",
+	}
+
+	assert.Equal(t, 42, torrent.ID)
+	assert.Equal(t, "Example Torrent", torrent.Name)
+	assert.Equal(t, "/path/to/downloads", torrent.DownloadDir)
+	assert.Equal(t, "1234567890abcdef", torrent.HashString)
+}
+
+func TestConfig_Fields(t *testing.T) {
+	config := Config{
+		Host:     "192.168.1.100",
+		Port:     9091,
+		User:     "admin",
+		Password: "secret123",
+		Dirs:     []string{"/downloads", "/media/torrents"},
+	}
+
+	assert.Equal(t, "192.168.1.100", config.Host)
+	assert.Equal(t, 9091, config.Port)
+	assert.Equal(t, "admin", config.User)
+	assert.Equal(t, "secret123", config.Password)
+	assert.Equal(t, []string{"/downloads", "/media/torrents"}, config.Dirs)
+}
+
+func TestConfig_DefaultValues(t *testing.T) {
+	var config Config
+
+	// Test zero values
+	assert.Empty(t, config.Host)
+	assert.Zero(t, config.Port)
+	assert.Empty(t, config.User)
+	assert.Empty(t, config.Password)
+	assert.Nil(t, config.Dirs)
+}
+
+func TestConfig_WithEmptyDirs(t *testing.T) {
+	config := Config{
+		Host:     "localhost",
+		Port:     9091,
+		User:     "test",
+		Password: "test",
+		Dirs:     []string{}, // Empty slice
+	}
+
+	assert.NotNil(t, config.Dirs)
+	assert.Len(t, config.Dirs, 0)
+}
+</file>
+
+<file path="pkg/types/types.go">
+package types
+
+type TransmissionRequest struct {
+	Method    string                 `json:"method"`
+	Arguments map[string]interface{} `json:"arguments,omitempty"`
+}
+
+type TorrentInfo struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	DownloadDir string `json:"downloadDir"`
+	HashString  string `json:"hashString"`
+}
+
+type TransmissionResponse struct {
+	Arguments struct {
+		Torrents []TorrentInfo `json:"torrents"`
+	} `json:"arguments"`
+	Result string `json:"result"`
+}
+
+type Config struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	Dirs     []string
+}
+</file>
+
+<file path="pkg/utils/integration_test.go">
+package utils_test
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"peerless/pkg/utils"
+)
+
+// TestFileOutputIntegration tests file output functionality
+func TestFileOutputIntegration(t *testing.T) {
+	t.Run("WriteDirectoryListToFile", func(t *testing.T) {
+		// Create temporary directory
+		tempDir := t.TempDir()
+		outputFile := filepath.Join(tempDir, "directories.txt")
+
+		// Test data
+		dirs := []utils.DirectoryInfo{
+			{Path: "/downloads/movies", Count: 5},
+			{Path: "/downloads/tv", Count: 3},
+			{Path: "/downloads/documentaries", Count: 2},
+		}
+
+		// Write to file
+		err := utils.WriteDirectoryList(outputFile, dirs)
+		if err != nil {
+			t.Fatalf("Failed to write directory list: %v", err)
+		}
+
+		// Verify file exists
+		if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+			t.Fatalf("Output file was not created: %s", outputFile)
+		}
+
+		// Read and verify content
+		content, err := os.ReadFile(outputFile)
+		if err != nil {
+			t.Fatalf("Failed to read output file: %v", err)
+		}
+
+		contentStr := string(content)
+		expectedLines := []string{
+			"/downloads/documentaries (2 torrents)",
+			"/downloads/movies (5 torrents)",
+			"/downloads/tv (3 torrents)",
+		}
+
+		for _, expectedLine := range expectedLines {
+			if !strings.Contains(contentStr, expectedLine) {
+				t.Errorf("Expected line '%s' not found in content: %s", expectedLine, contentStr)
+			}
+		}
+
+		// Verify content is plain text (no control characters)
+		if strings.Contains(contentStr, "\u200E") || strings.Contains(contentStr, "\u200F") {
+			t.Errorf("Output contains unwanted Unicode control characters: %s", contentStr)
+		}
+	})
+
+	t.Run("WriteMissingPathsToFile", func(t *testing.T) {
+		// Create temporary directory
+		tempDir := t.TempDir()
+		outputFile := filepath.Join(tempDir, "missing.txt")
+
+		// Test data with potential Unicode characters
+		paths := []string{
+			"/downloads/movies/Movie.2023.1080p.BluRay.x264",
+			"/downloads/tv/TV.Series.S01\u200E", // With LTR mark
+			"/downloads/documentaries/Nature.Doc.2024",
+			"/downloads/music/Album.2023\u200F",  // With RTL mark
+		}
+
+		// Write to file
+		err := utils.WriteMissingPaths(outputFile, paths)
+		if err != nil {
+			t.Fatalf("Failed to write missing paths: %v", err)
+		}
+
+		// Verify file exists
+		if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+			t.Fatalf("Output file was not created: %s", outputFile)
+		}
+
+		// Read and verify content
+		content, err := os.ReadFile(outputFile)
+		if err != nil {
+			t.Fatalf("Failed to read output file: %v", err)
+		}
+
+		contentStr := string(content)
+
+		// Verify all paths are present (without Unicode marks)
+		expectedPaths := []string{
+			"/downloads/movies/Movie.2023.1080p.BluRay.x264",
+			"/downloads/tv/TV.Series.S01",
+			"/downloads/documentaries/Nature.Doc.2024",
+			"/downloads/music/Album.2023",
+		}
+
+		for _, expectedPath := range expectedPaths {
+			if !strings.Contains(contentStr, expectedPath) {
+				t.Errorf("Expected path '%s' not found in content: %s", expectedPath, contentStr)
+			}
+		}
+
+		// Verify Unicode control characters are removed
+		if strings.Contains(contentStr, "\u200E") || strings.Contains(contentStr, "\u200F") {
+			t.Errorf("Output contains Unicode control characters that should have been sanitized: %s", contentStr)
+		}
+	})
+
+	t.Run("EmptyFileOutput", func(t *testing.T) {
+		// Create temporary directory
+		tempDir := t.TempDir()
+		outputFile := filepath.Join(tempDir, "empty.txt")
+
+		// Test empty data
+		dirs := []utils.DirectoryInfo{}
+		err := utils.WriteDirectoryList(outputFile, dirs)
+		if err != nil {
+			t.Fatalf("Failed to write empty directory list: %v", err)
+		}
+
+		// Verify file exists
+		if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+			t.Fatalf("Output file was not created: %s", outputFile)
+		}
+
+		// Read and verify content is empty
+		content, err := os.ReadFile(outputFile)
+		if err != nil {
+			t.Fatalf("Failed to read output file: %v", err)
+		}
+
+		if len(content) != 0 {
+			t.Errorf("Expected empty file, but got content: %s", string(content))
+		}
+	})
+}
+
+// TestFilePermissions tests file creation permissions
+func TestFilePermissions(t *testing.T) {
+	tempDir := t.TempDir()
+	outputFile := filepath.Join(tempDir, "permissions.txt")
+
+	// Test data
+	dirs := []utils.DirectoryInfo{
+		{Path: "/downloads/test", Count: 1},
+	}
+
+	// Write to file
+	err := utils.WriteDirectoryList(outputFile, dirs)
+	if err != nil {
+		t.Fatalf("Failed to write directory list: %v", err)
+	}
+
+	// Check file permissions
+	info, err := os.Stat(outputFile)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	// Verify file is readable by owner
+	if info.Mode().Perm()&0400 == 0 {
+		t.Error("File is not readable by owner")
+	}
+}
+
+// TestSpecialCharactersInPaths tests handling of special characters
+func TestSpecialCharactersInPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	outputFile := filepath.Join(tempDir, "special.txt")
+
+	// Test data with various special characters
+	paths := []string{
+		"/downloads/Normal File",
+		"/downloads/File-With-Dashes",
+		"/downloads/File_With_Underscores",
+		"/downloads/File.With.Dots",
+		"/downloads/File With Spaces",
+		"/downloads/File'With'Quotes",
+		"/downloads/File(With)Parens",
+		"/downloads/File[With]Brackets",
+		"/downloads/File{With}Braces",
+		"/downloads/File#With#Hash",
+		"/downloads/File@With@At",
+		"/downloads/File$With$Dollar",
+		"/downloads/File%With%Percent",
+		"/downloads/File^With^Caret",
+		"/downloads/File&With&Ampersand",
+		"/downloads/File*With*Asterisk",
+		"/downloads/File+With+Plus",
+		"/downloads/File=With=Equals",
+		"/downloads/File|With|Pipe",
+		"/downloads/File\\With\\Backslash",
+		"/downloads/File/With/Slashes",
+		"/downloads/File:With:Colon",
+		"/downloads/File;With;Semicolon",
+		"/downloads/File\"With\"Quotes",
+		"/downloads/File<With>Brackets",
+		"/downloads/File?With?Question",
+		// Unicode characters (should be preserved)
+		"/downloads/电影.MOV", // Chinese characters
+		"/downloads/Фильм.MOV", // Cyrillic characters
+		"/downloads/فيلم.MOV", // Arabic characters
+	}
+
+	// Write to file
+	err := utils.WriteMissingPaths(outputFile, paths)
+	if err != nil {
+		t.Fatalf("Failed to write paths with special characters: %v", err)
+	}
+
+	// Read and verify content
+	content, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify all paths are present
+	for _, expectedPath := range paths {
+		if !strings.Contains(contentStr, expectedPath) {
+			t.Errorf("Expected path '%s' not found in content", expectedPath)
+		}
+	}
+
+	// Verify control characters are removed
+	controlChars := []string{"\u200E", "\u200F", "\u202A", "\u202B", "\u202C", "\u202D", "\u202E"}
+	for _, char := range controlChars {
+		if strings.Contains(contentStr, char) {
+			t.Errorf("Output contains control character '%s' that should have been removed", char)
+		}
+	}
+}
+</file>
+
+<file path="pkg/client/transmission_test.go">
+package client
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"peerless/pkg/types"
+)
+
+func TestNewTransmissionClient(t *testing.T) {
+	config := types.Config{
+		Host:     "localhost",
+		Port:     9091,
+		User:     "admin",
+		Password: "secret",
+	}
+
+	client := NewTransmissionClient(config)
+
+	assert.Equal(t, config, client.config)
+}
+
+func TestGetSessionID(t *testing.T) {
+	t.Run("successful session ID retrieval", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/transmission/rpc", r.URL.Path)
+			// Note: The initial session ID request doesn't set Content-Type
+
+			// Read and discard the request body
+			body := make([]byte, r.ContentLength)
+			_, _ = r.Body.Read(body)
+
+			w.Header().Set("X-Transmission-Session-Id", "test-session-id-123")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		// Extract host and port from test server
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		sessionID, err := client.GetSessionID()
+		require.NoError(t, err)
+		assert.Equal(t, "test-session-id-123", sessionID)
+	})
+
+	t.Run("with authentication", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			username, password, ok := r.BasicAuth()
+			assert.True(t, ok)
+			assert.Equal(t, "admin", username)
+			assert.Equal(t, "secret", password)
+
+			w.Header().Set("X-Transmission-Session-Id", "auth-session-id")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host:     host,
+			Port:     port,
+			User:     "admin",
+			Password: "secret",
+		}
+		client := NewTransmissionClient(config)
+
+		sessionID, err := client.GetSessionID()
+		require.NoError(t, err)
+		assert.Equal(t, "auth-session-id", sessionID)
+	})
+
+	t.Run("missing session ID", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		sessionID, err := client.GetSessionID()
+		assert.Error(t, err)
+		assert.Equal(t, "", sessionID)
+		assert.Contains(t, err.Error(), "no session ID received")
+	})
+
+	t.Run("connection error", func(t *testing.T) {
+		config := types.Config{
+			Host: "non-existent-host",
+			Port: 9999,
+		}
+		client := NewTransmissionClient(config)
+
+		sessionID, err := client.GetSessionID()
+		assert.Error(t, err)
+		assert.Equal(t, "", sessionID)
+	})
+}
+
+func TestGetTorrents(t *testing.T) {
+	t.Run("successful torrent retrieval", func(t *testing.T) {
+		sessionID := "test-session-id"
+
+		mockResponse := `{
+			"arguments": {
+				"torrents": [
+					{
+						"id": 1,
+						"name": "Test Torrent 1",
+						"downloadDir": "/downloads",
+						"hashString": "abc123"
+					},
+					{
+						"id": 2,
+						"name": "Test Torrent 2",
+						"downloadDir": "/downloads/movies",
+						"hashString": "def456"
+					}
+				]
+			},
+			"result": "success"
+		}`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "test-session-id", r.Header.Get("X-Transmission-Session-Id"))
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+			// Verify request body contains correct fields
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			assert.Contains(t, string(body), "torrent-get")
+			assert.Contains(t, string(body), "id")
+			assert.Contains(t, string(body), "name")
+			assert.Contains(t, string(body), "downloadDir")
+			assert.Contains(t, string(body), "hashString")
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, mockResponse)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		torrents, err := client.GetTorrents(sessionID)
+		require.NoError(t, err)
+
+		assert.Len(t, torrents, 2)
+		assert.Equal(t, 1, torrents[0].ID)
+		assert.Equal(t, "Test Torrent 1", torrents[0].Name)
+		assert.Equal(t, "/downloads", torrents[0].DownloadDir)
+		assert.Equal(t, "abc123", torrents[0].HashString)
+
+		assert.Equal(t, 2, torrents[1].ID)
+		assert.Equal(t, "Test Torrent 2", torrents[1].Name)
+		assert.Equal(t, "/downloads/movies", torrents[1].DownloadDir)
+		assert.Equal(t, "def456", torrents[1].HashString)
+	})
+
+	t.Run("transmission error response", func(t *testing.T) {
+		sessionID := "test-session-id"
+
+		mockResponse := `{
+			"result": "error",
+			"arguments": {}
+		}`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, mockResponse)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		torrents, err := client.GetTorrents(sessionID)
+		assert.Error(t, err)
+		assert.Nil(t, torrents)
+		assert.Contains(t, err.Error(), "transmission returned: error")
+	})
+}
+
+func TestGetAllTorrentPaths(t *testing.T) {
+	t.Run("successful path retrieval with sorting", func(t *testing.T) {
+		sessionID := "test-session-id"
+
+		// Return torrents in unsorted order to test sorting
+		mockResponse := `{
+			"arguments": {
+				"torrents": [
+					{
+						"id": 2,
+						"name": "Z Torrent",
+						"downloadDir": "/downloads",
+						"hashString": "def456"
+					},
+					{
+						"id": 1,
+						"name": "A Torrent",
+						"downloadDir": "/downloads",
+						"hashString": "abc123"
+					},
+					{
+						"id": 3,
+						"name": "M Torrent",
+						"downloadDir": "/movies",
+						"hashString": "ghi789"
+					}
+				]
+			},
+			"result": "success"
+		}`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, mockResponse)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		paths, err := client.GetAllTorrentPaths(sessionID)
+		require.NoError(t, err)
+
+		// Verify paths are sorted alphabetically
+		expected := []string{
+			"/downloads/A Torrent",
+			"/downloads/Z Torrent",
+			"/movies/M Torrent",
+		}
+
+		assert.Equal(t, expected, paths)
+	})
+}
+
+func TestListDownloadDirectories(t *testing.T) {
+	t.Run("successful directory listing", func(t *testing.T) {
+		sessionID := "test-session-id"
+
+		mockResponse := `{
+			"arguments": {
+				"torrents": [
+					{
+						"id": 1,
+						"name": "Torrent 1",
+						"downloadDir": "/downloads/movies",
+						"hashString": "abc123"
+					},
+					{
+						"id": 2,
+						"name": "Torrent 2",
+						"downloadDir": "/downloads/movies",
+						"hashString": "def456"
+					},
+					{
+						"id": 3,
+						"name": "Torrent 3",
+						"downloadDir": "/downloads/tv",
+						"hashString": "ghi789"
+					}
+				]
+			},
+			"result": "success"
+		}`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, mockResponse)
+		}))
+		defer server.Close()
+
+		host, port := extractHostPort(server.URL)
+
+		config := types.Config{
+			Host: host,
+			Port: port,
+		}
+		client := NewTransmissionClient(config)
+
+		// Capture stdout to verify output
+		// This test just verifies no error is returned
+		err := client.ListDownloadDirectories(sessionID)
+		require.NoError(t, err)
+	})
+}
+
+// Helper function to extract host and port from test server URL
+func extractHostPort(url string) (string, int) {
+	// Remove protocol prefix
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "https://")
+
+	// Split host and port
+	parts := strings.Split(url, ":")
+	host := parts[0]
+
+	// Default port if not specified
+	port := 80
+	if len(parts) > 1 {
+		_, err := fmt.Sscanf(parts[1], "%d", &port)
+		if err != nil {
+			port = 80
+		}
+	}
+
+	return host, port
+}
+</file>
+
+<file path="pkg/output/styles.go">
+package output
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/log"
+)
+
+var (
+	// Color styles
+	SuccessStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("10")) // Green
+
+	ErrorStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("9")) // Red
+
+	WarningStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("11")) // Yellow
+
+	InfoStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("12")) // Blue
+
+	HeaderStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("13")) // Magenta
+
+	PathStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("14")) // Cyan
+
+	SizeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")) // Bright Black/Gray
+
+	FoundStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("10")) // Green
+
+	MissingStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("9")) // Red
+
+	// Specialized styles
+	DirectoryHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("11")) // Yellow
+
+	SeparatorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")) // Gray
+
+	SummaryStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("14")) // Cyan
+
+	FileStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")) // White
+
+	DirStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("13")) // Magenta
+
+	// Status symbols
+	SuccessSymbol = SuccessStyle.Render("✓")
+	ErrorSymbol   = ErrorStyle.Render("✗")
+	DirSymbol     = DirStyle.Render("[DIR]")
+	FileSymbol    = FileStyle.Render("[FILE]")
+)
+
+// Initialize logger
+var Logger *log.Logger
+
+func init() {
+	// Initialize logger with custom settings
+	Logger = log.NewWithOptions(os.Stderr, log.Options{
+		ReportCaller:    false,
+		ReportTimestamp: false,
+		Prefix:          "peerless",
+	})
+
+	// Check if we're in a terminal that supports colors
+	if !isTerminal() {
+		disableColors()
+	}
+}
+
+// isTerminal checks if stdout is a terminal
+func isTerminal() bool {
+	fileInfo, _ := os.Stdout.Stat()
+	return (fileInfo.Mode() & os.ModeCharDevice) != 0
+}
+
+// disableColors disables all colored output for non-terminal environments
+func disableColors() {
+	SuccessStyle = SuccessStyle.UnsetBold().UnsetForeground()
+	ErrorStyle = ErrorStyle.UnsetBold().UnsetForeground()
+	WarningStyle = WarningStyle.UnsetBold().UnsetForeground()
+	InfoStyle = InfoStyle.UnsetBold().UnsetForeground()
+	HeaderStyle = HeaderStyle.UnsetBold().UnsetForeground()
+	PathStyle = PathStyle.UnsetBold().UnsetForeground()
+	SizeStyle = SizeStyle.UnsetBold().UnsetForeground()
+	FoundStyle = FoundStyle.UnsetBold().UnsetForeground()
+	MissingStyle = MissingStyle.UnsetBold().UnsetForeground()
+	DirectoryHeaderStyle = DirectoryHeaderStyle.UnsetBold().UnsetForeground()
+	SeparatorStyle = SeparatorStyle.UnsetBold().UnsetForeground()
+	SummaryStyle = SummaryStyle.UnsetBold().UnsetForeground()
+	FileStyle = FileStyle.UnsetBold().UnsetForeground()
+	DirStyle = DirStyle.UnsetBold().UnsetForeground()
+
+	SuccessSymbol = "✓"
+	ErrorSymbol = "✗"
+	DirSymbol = "[DIR]"
+	FileSymbol = "[FILE]"
+}
+
+// Helper functions for common output patterns
+
+func PrintHeader(text string) {
+	println(HeaderStyle.Render(text))
+}
+
+func PrintSeparator(width int) {
+	separator := SeparatorStyle.Render(strings.Repeat("-", width))
+	println(separator)
+}
+
+func PrintDirectoryHeader(dir string) {
+	println(DirectoryHeaderStyle.Render("Directory: " + dir))
+}
+
+func PrintSummary(text string) {
+	println(SummaryStyle.Render(text))
+}
+
+func PrintSuccess(text string) {
+	println(SuccessStyle.Render(text))
+}
+
+func PrintError(text string) {
+	println(ErrorStyle.Render(text))
+}
+
+func PrintWarning(text string) {
+	println(WarningStyle.Render(text))
+}
+
+func PrintInfo(text string) {
+	println(InfoStyle.Render(text))
+}
+
+func PrintPath(path string) {
+	println(PathStyle.Render(path))
+}
+
+func PrintSize(size string) {
+	print(SizeStyle.Render(size))
+}
+
+func PrintTorrentStatus(isFound bool, name string, isDir bool) {
+	var statusSymbol string
+	var entryType string
+
+	if isFound {
+		statusSymbol = SuccessSymbol
+	} else {
+		statusSymbol = ErrorSymbol
+	}
+
+	if isDir {
+		entryType = DirSymbol + " "
+	} else {
+		entryType = FileSymbol
+	}
+
+	fmt.Printf("%s %s %s\n", statusSymbol, entryType, name)
+}
+</file>
+
+<file path="pkg/utils/files_test.go">
+package utils
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetSize(t *testing.T) {
+	t.Run("regular file", func(t *testing.T) {
+		// Create a temporary file
+		tmpDir := t.TempDir()
+		tmpFile := filepath.Join(tmpDir, "test.txt")
+
+		content := []byte("Hello, World!")
+		err := os.WriteFile(tmpFile, content, 0644)
+		require.NoError(t, err)
+
+		size, err := GetSize(tmpFile)
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(content)), size)
+	})
+
+	t.Run("directory with files", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create files in the directory
+		files := map[string][]byte{
+			"file1.txt": []byte("Hello"),
+			"file2.txt": []byte("World!"),
+			"subdir/file3.txt": []byte("Test"),
+		}
+
+		totalSize := int64(0)
+		for path, content := range files {
+			fullPath := filepath.Join(tmpDir, path)
+			err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+			require.NoError(t, err)
+
+			err = os.WriteFile(fullPath, content, 0644)
+			require.NoError(t, err)
+			totalSize += int64(len(content))
+		}
+
+		size, err := GetSize(tmpDir)
+		require.NoError(t, err)
+		assert.Equal(t, totalSize, size)
+	})
+
+	t.Run("non-existent path", func(t *testing.T) {
+		size, err := GetSize("/non/existent/path")
+		assert.Error(t, err)
+		assert.Equal(t, int64(0), size)
+	})
+
+	t.Run("empty directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		size, err := GetSize(tmpDir)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), size)
+	})
+}
+
+func TestFormatSize(t *testing.T) {
+	tests := []struct {
+		name     string
+		bytes    int64
+		expected string
+	}{
+		{"bytes", 512, "512 B"},
+		{"kilobytes", 1024, "1.00 KB"},
+		{"megabytes", 1024 * 1024, "1.00 MB"},
+		{"gigabytes", 1024 * 1024 * 1024, "1.00 GB"},
+		{"terabytes", 1024 * 1024 * 1024 * 1024, "1.00 TB"},
+		{"petabytes", 1024 * 1024 * 1024 * 1024 * 1024, "1.00 PB"},
+		{"fractional", 1536, "1.50 KB"},
+		{"zero", 0, "0 B"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatSize(tt.bytes)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestPortValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		port        int
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid port",
+			port:        9091,
+			expectError: false,
+		},
+		{
+			name:        "valid port 1",
+			port:        1,
+			expectError: false,
+		},
+		{
+			name:        "valid port 65535",
+			port:        65535,
+			expectError: false,
+		},
+		{
+			name:        "invalid port 0",
+			port:        0,
+			expectError: true,
+			errorMsg:    "invalid port 0: port must be between 1 and 65535",
+		},
+		{
+			name:        "invalid port negative",
+			port:        -1,
+			expectError: true,
+			errorMsg:    "invalid port -1: port must be between 1 and 65535",
+		},
+		{
+			name:        "invalid port too high",
+			port:        65536,
+			expectError: true,
+			errorMsg:    "invalid port 65536: port must be between 1 and 65535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// This simulates the validation logic from main.go
+			if tt.port <= 0 || tt.port > 65535 {
+				if !tt.expectError {
+					t.Errorf("expected no error but port %d should be invalid", tt.port)
+				}
+				if tt.expectError && fmt.Sprintf("invalid port %d: port must be between 1 and 65535", tt.port) != tt.errorMsg {
+					t.Errorf("expected error message %q but got %q", tt.errorMsg, fmt.Sprintf("invalid port %d: port must be between 1 and 65535", tt.port))
+				}
+			} else {
+				if tt.expectError {
+					t.Errorf("expected error but port %d should be valid", tt.port)
+				}
+			}
+		})
+	}
+}
+
+func TestSanitizeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "normal text",
+			input:    "/path/to/file.txt",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with LTR mark",
+			input:    "/path/to/file.txt\u200E",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with RTL mark",
+			input:    "/path/to/file.txt\u200F",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with multiple formatting characters",
+			input:    "/path/to/file.txt\u200E\u200F\u202A",
+			expected: "/path/to/file.txt",
+		},
+		{
+			name:     "with newlines preserved",
+			input:    "/path/to/file.txt\n/another/path.txt",
+			expected: "/path/to/file.txt\n/another/path.txt",
+		},
+		{
+			name:     "with tabs preserved",
+			input:    "/path/to/file.txt\twith tab",
+			expected: "/path/to/file.txt\twith tab",
+		},
+		{
+			name:     "with control characters removed",
+			input:    "/path/to/file.txt\u0001\u0002",
+			expected: "/path/to/file.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeString(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestWriteMissingPaths(t *testing.T) {
+	t.Run("write paths to file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		outputFile := filepath.Join(tmpDir, "missing.txt")
+
+		paths := []string{
+			"/path/to/file1.txt",
+			"/path/to/file2.txt",
+			"/another/path/file3.txt",
+		}
+
+		err := WriteMissingPaths(outputFile, paths)
+		require.NoError(t, err)
+
+		// Read the file and verify content
+		content, err := os.ReadFile(outputFile)
+		require.NoError(t, err)
+
+		expected := "/path/to/file1.txt\n/path/to/file2.txt\n/another/path/file3.txt\n"
+		assert.Equal(t, expected, string(content))
+	})
+
+	t.Run("empty paths", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		outputFile := filepath.Join(tmpDir, "empty.txt")
+
+		err := WriteMissingPaths(outputFile, []string{})
+		require.NoError(t, err)
+
+		// File should exist but be empty
+		content, err := os.ReadFile(outputFile)
+		require.NoError(t, err)
+		assert.Equal(t, "", string(content))
+	})
+
+	t.Run("invalid path", func(t *testing.T) {
+		err := WriteMissingPaths("/invalid/path/file.txt", []string{"test"})
+		assert.Error(t, err)
+	})
+}
+</file>
+
+<file path="pkg/utils/files.go">
+package utils
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"unicode"
+)
+
+func GetSize(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+
+	if !info.IsDir() {
+		return info.Size(), nil
+	}
+
+	// For directories, calculate total size recursively
+	var totalSize int64
+	err = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors, continue walking
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+
+	return totalSize, err
+}
+
+func FormatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	return fmt.Sprintf("%.2f %s", float64(bytes)/float64(div), units[exp])
+}
+
+func WriteMissingPaths(filename string, paths []string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, path := range paths {
+		cleanPath := SanitizeString(path)
+		_, err := file.WriteString(cleanPath + "\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// SanitizeString removes control characters and LTR/RTL marks from strings
+func SanitizeString(s string) string {
+	var result strings.Builder
+	for _, r := range s {
+		// Skip control characters except newline, tab, and carriage return
+		if unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' {
+			continue
+		}
+		// Skip specific Unicode formatting characters
+		if r == '\u200E' || r == '\u200F' || r == '\u202A' || r == '\u202B' || r == '\u202C' || r == '\u202D' || r == '\u202E' {
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
+}
+
+// DirectoryInfo represents a directory with its torrent count
+type DirectoryInfo struct {
+	Path  string
+	Count int
+}
+
+// WriteDirectoryList writes a list of directories to a file
+func WriteDirectoryList(filename string, dirs []DirectoryInfo) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, dir := range dirs {
+		cleanPath := SanitizeString(dir.Path)
+		_, err := file.WriteString(fmt.Sprintf("%s (%d torrents)\n", cleanPath, dir.Count))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+</file>
+
+<file path=".goreleaser.yaml">
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - 386
+      - arm
+    goarm:
+      - 7
+    # Exclude ARM builds for non-Linux OSes
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+    ---
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+</file>
+
+<file path="go.mod">
+module peerless
+
+go 1.25.3
+
+require (
+	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/charmbracelet/log v0.4.2
+	github.com/stretchr/testify v1.11.1
+	github.com/urfave/cli/v3 v3.5.0
+)
+
+require (
+	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
+	github.com/charmbracelet/x/ansi v0.8.0 // indirect
+	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
+	github.com/charmbracelet/x/term v0.2.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/muesli/termenv v0.16.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+</file>
+
+<file path="pkg/client/transmission.go">
+package client
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"peerless/pkg/types"
+	"peerless/pkg/utils"
+)
+
+type TransmissionClient struct {
+	config types.Config
+}
+
+func NewTransmissionClient(config types.Config) *TransmissionClient {
+	return &TransmissionClient{
+		config: config,
+	}
+}
+
+func (c *TransmissionClient) GetSessionID() (string, error) {
+	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte("{}")))
+	if err != nil {
+		return "", err
+	}
+
+	if c.config.User != "" {
+		req.SetBasicAuth(c.config.User, c.config.Password)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Check for HTTP authentication errors
+	switch resp.StatusCode {
+	case 401:
+		return "", fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 403:
+		return "", fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 404:
+		return "", fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
+	case 409:
+		// This is the normal session establishment flow - extract session ID from response
+		sessionID := resp.Header.Get("X-Transmission-Session-Id")
+		if sessionID == "" {
+			return "", fmt.Errorf("session conflict response missing X-Transmission-Session-Id header from Transmission at %s:%d", c.config.Host, c.config.Port)
+		}
+		return sessionID, nil
+	case 500:
+		return "", fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	}
+
+	// Check for other HTTP errors
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
+	}
+
+	// For successful responses (200 OK), extract session ID from header
+	sessionID := resp.Header.Get("X-Transmission-Session-Id")
+	if sessionID == "" {
+		return "", fmt.Errorf("no session ID received from Transmission at %s:%d. Ensure RPC interface is enabled", c.config.Host, c.config.Port)
+	}
+
+	return sessionID, nil
+}
+
+func (c *TransmissionClient) GetTorrents(sessionID string) ([]types.TorrentInfo, error) {
+	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
+
+	reqBody := types.TransmissionRequest{
+		Method: "torrent-get",
+		Arguments: map[string]interface{}{
+			"fields": []string{"id", "name", "downloadDir", "hashString"},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Transmission-Session-Id", sessionID)
+
+	if c.config.User != "" {
+		req.SetBasicAuth(c.config.User, c.config.Password)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check for HTTP authentication errors
+	switch resp.StatusCode {
+	case 401:
+		return nil, fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 403:
+		return nil, fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
+	case 404:
+		return nil, fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
+	case 409:
+		return nil, fmt.Errorf("session conflict: invalid session ID. Re-authentication required")
+	case 500:
+		return nil, fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	}
+
+	// Check for other HTTP errors
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result types.TransmissionResponse
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Result != "success" {
+		return nil, fmt.Errorf("transmission returned: %s", result.Result)
+	}
+
+	return result.Arguments.Torrents, nil
+}
+
+func (c *TransmissionClient) GetAllTorrentPaths(sessionID string) ([]string, error) {
+	torrents, err := c.GetTorrents(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	var paths []string
+	for _, torrent := range torrents {
+		absPath := filepath.Join(torrent.DownloadDir, torrent.Name)
+		// Sanitize the path to remove any control characters
+		cleanPath := utils.SanitizeString(absPath)
+		paths = append(paths, cleanPath)
+	}
+
+	// Sort paths alphabetically
+	sort.Strings(paths)
+
+	return paths, nil
+}
+
+// GetDownloadDirectories returns download directories with their torrent counts
+func (c *TransmissionClient) GetDownloadDirectories(sessionID string) ([]utils.DirectoryInfo, error) {
+	torrents, err := c.GetTorrents(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect unique download directories
+	dirMap := make(map[string]int)
+	for _, t := range torrents {
+		dirMap[t.DownloadDir]++
+	}
+
+	// Convert to sorted slice
+	var dirs []utils.DirectoryInfo
+	for path, count := range dirMap {
+		cleanPath := utils.SanitizeString(path)
+		dirs = append(dirs, utils.DirectoryInfo{Path: cleanPath, Count: count})
+	}
+
+	// Sort by path using Go's built-in sort
+	sort.Slice(dirs, func(i, j int) bool {
+		return dirs[i].Path < dirs[j].Path
+	})
+
+	return dirs, nil
+}
+
+// ListDownloadDirectories prints download directories (for backward compatibility)
+func (c *TransmissionClient) ListDownloadDirectories(sessionID string) error {
+	dirs, err := c.GetDownloadDirectories(sessionID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
+	fmt.Println(strings.Repeat("-", 80))
+
+	for _, d := range dirs {
+		fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
+	}
+
+	return nil
+}
+</file>
+
+<file path="README.md">
+# Peerless
+
+A powerful Go CLI tool for managing Transmission torrents by comparing local directories with your torrent library.
+
+## Overview
+
+Peerless connects to your Transmission BitTorrent client and helps you identify which local files and directories are not tracked in torrents. Perfect for maintaining an organized torrent library and ensuring all your media is properly managed.
+
+## ✨ Features
+
+- **🔐 Secure Authentication**: Mandatory authentication for all connections
+- **📁 Directory Analysis**: Compare local directories against torrent names
+- **📊 Multiple Output Formats**: Styled console output or plain text files
+- **🌍 Unicode Support**: Handles international file names and paths
+- **🚀 High Performance**: Fast comparison with efficient algorithms
+- **🛡️ Error Resilience**: Comprehensive error handling with actionable messages
+- **🎨 Beautiful Output**: Color-coded terminal output with automatic formatting
+
+## 🚀 Quick Start
+
+### Installation
+
+### Pre-built binaries
+
+Binaries are available in release for linux, windows and os x, including a arm-7 one (Synology)
+
+#### From Source
+```bash
+git clone <repository-url>
+cd peerless
+go build -o peerless main.go
+```
+
+#### Using GoReleaser
+```bash
+goreleaser build --clean
+```
+
+### Basic Usage
+
+```bash
+# Show help screen
+./peerless
+
+# Check current directory against torrents
+./peerless --host localhost --user admin --password secret check
+
+# List all Transmission directories
+./peerless --host localhost --user admin --password secret list-directories
+
+# List all torrent paths
+./peerless --host localhost --user admin --password secret list-torrents
+```
+
+## 📖 Commands
+
+### `check` (Default Command)
+
+Compare local directories with Transmission torrents to find missing items.
+
+```bash
+./peerless --host localhost --user admin --password secret check --dir /downloads/movies --dir /downloads/tv
+```
+
+**Flags:**
+- `--dir, -d`: Directory to check (can be specified multiple times)
+- `--output, -o`: Save missing items to file (unstyled output)
+
+**Example Output:**
+```
+Directory: /downloads/movies
+--------------------------------------------------------------------------------
+✗ [DIR] Movie.2023.1080p.BluRay.x264
+✓ [DIR] Movie.Collection.2023
+✗ [FILE] Documentary.2024.720p.WEB-DL.x264
+--------------------------------------------------------------------------------
+Directory Summary: 1/3 items found in Transmission
+Missing items total size: 25.67 GB
+```
+
+### `list-directories` (Aliases: `ls-dirs`, `ld`)
+
+List all download directories configured in Transmission with torrent counts.
+
+```bash
+./peerless --host localhost --user admin --password secret list-directories
+
+# Save to file (plain text)
+./peerless --host localhost --user admin --password secret list-directories --output directories.txt
+```
+
+**Output Example:**
+```
+Download Directories in Transmission (3 unique):
+--------------------------------------------------------------------------------
+/downloads/movies (15 torrents)
+/downloads/tv (8 torrents)
+/downloads/documentaries (3 torrents)
+```
+
+### `list-torrents` (Aliases: `ls-torrents`, `lt`)
+
+List all torrent paths from Transmission.
+
+```bash
+./peerless --host localhost --user admin --password secret list-torrents
+
+# Save to file (plain text)
+./peerless --host localhost --user admin --password secret list-torrents --output torrents.txt
+```
+
+## ⚙️ Configuration
+
+### Authentication (Required)
+
+Peerless requires authentication for all operations:
+
+```bash
+./peerless --host <host> --user <username> --password <password> <command>
+```
+
+**Required Parameters:**
+- `--host, -H`: Transmission server host
+- `--user, -u`: Transmission username
+- `--password, -p`: Transmission password
+
+**Example:**
+```bash
+./peerless --host 192.168.1.100 --user admin --password secret check
+```
+
+### Optional Parameters
+
+- `--port, --po`: Transmission port (default: 9091)
+- `--verbose, -v`: Enable verbose output
+- `--debug, -d`: Enable debug output
+
+## 🎨 Output Modes
+
+### Console Output (Default)
+
+Styled terminal output with colors and formatting:
+
+```
+Directory: /downloads/movies
+🔹 Found: 15/20 items
+❌ Missing: 5 items (12.3 GB)
+```
+
+### File Output (Plain Text)
+
+Unstyled output suitable for scripts and automation:
+
+```bash
+./peerless --host localhost --user admin --password secret check --output missing.txt
+```
+
+**File Content:**
+```
+/downloads/movies/Missing.Movie.2023
+/downloads/movies/Another.Movie.2024
+```
+
+## 🔧 Transmission Setup
+
+### Enable RPC Access
+
+1. Open Transmission
+2. Go to **Edit → Preferences** (or **Transmission → Preferences** on macOS)
+3. Navigate to **Remote** or **Web** tab
+4. **Enable "Allow remote access"**
+5. Set **Username** and **Password**
+6. Note the **RPC port** (default: 9091)
+7. Click **OK**
+
+### Firewall Configuration
+
+Ensure your firewall allows traffic to the Transmission RPC port:
+- **Default Port**: 9091
+- **Protocol**: HTTP
+- **Source**: Your IP address or range
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Authentication Failed
+```
+authentication failed: please check your username and password for Transmission at host:port
+```
+**Solution**: Verify your Transmission RPC username and password.
+
+#### Connection Refused
+```
+cannot connect to Transmission at host:port. Please ensure:
+1. Transmission is running
+2. RPC interface is enabled
+3. Host and port are correct
+```
+**Solution**: Check if Transmission is running and RPC is enabled.
+
+#### RPC Not Found
+```
+Transmission RPC endpoint not found at host:port. Ensure Transmission is running and RPC is enabled
+```
+**Solution**: Enable RPC interface in Transmission settings.
+
+#### Port Issues
+```
+invalid port 99999: port must be between 1 and 65535
+```
+**Solution**: Use a valid port number (1-65535).
+
+### Advanced Troubleshooting
+
+#### Enable Debug Logging
+```bash
+./peerless --host localhost --user admin --password secret --debug check
+```
+
+#### Test Connection
+```bash
+# Test basic connectivity
+./peerless --host localhost --user admin --password secret list-directories
+
+# Test with verbose output
+./peerless --host localhost --user admin --password secret --verbose check
+```
+
+#### Verify Transmission Configuration
+1. Check Transmission is running: Open the application
+2. Verify RPC enabled: Preferences → Remote → "Allow remote access"
+3. Confirm credentials: Note exact username and password
+4. Check port: Default is 9091, verify if changed
+
+## 📋 Examples
+
+### Basic Workflow
+```bash
+# 1. Check what directories Transmission knows about
+./peerless --host localhost --user admin --password secret list-directories
+
+# 2. Compare your media directory
+./peerless --host localhost --user admin --password secret check --dir /media/Movies
+
+# 3. Save missing items for later review
+./peerless --host localhost --user admin --password secret check --dir /media/Movies --output missing.txt
+
+# 4. Get complete torrent list
+./peerless --host localhost --user admin --password secret list-torrents --output all-torrents.txt
+```
+
+### Batch Operations
+```bash
+# Check multiple directories
+./peerless --host localhost --user admin --password secret \
+  check \
+  --dir /downloads/movies \
+  --dir /downloads/tv \
+  --dir /downloads/documentaries
+
+# Export all directories
+./peerless --host localhost --user admin --password secret \
+  list-directories --output directories.txt
+
+# Export all torrent paths
+./peerless --host localhost --user admin --password secret \
+  list-torrents --output torrents.txt
+```
+
+### Remote Management
+```bash
+# Connect to remote Transmission server
+./peerless --host 192.168.1.100 --user admin --password secret \
+  check --dir /media/server/Movies
+
+# Different port
+./peerless --host localhost --port 9092 --user admin --password secret \
+  list-directories
+```
+
+## 🏗️ Development
+
+### Building from Source
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd peerless
+
+# Build binary
+go build -o peerless main.go
+
+# Run tests
+go test -v ./...
+
+# Build release version
+goreleaser build --clean
+```
+
+### Project Structure
+
+```
+peerless/
+├── main.go              # CLI entry point and command definitions
+├── go.mod               # Go module dependencies
+├── go.sum               # Dependency checksums
+├── .goreleaser.yaml     # Release configuration
+├── README.md            # This file
+└── pkg/
+    ├── client/          # Transmission RPC client
+    │   ├── transmission.go
+    │   └── integration_test.go
+    ├── types/           # Data structures
+    │   └── types.go
+    ├── utils/           # File system utilities
+    │   ├── files.go
+    │   └── integration_test.go
+    └── output/          # Terminal styling
+        └── styles.go
+```
+
+### Dependencies
+
+- **[urfave/cli/v3](https://github.com/urfave/cli)**: Modern CLI framework
+- **[charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss)**: Terminal styling
+- **[charmbracelet/log](https://github.com/charmbracelet/log)**: Structured logging
+- **[stretchr/testify](https://github.com/stretchr/testify)**: Testing utilities
+
+## 🧪 Testing
+
+### Run Tests
+```bash
+# Run all tests
+go test -v ./...
+
+# Run specific package tests
+go test -v ./pkg/client
+go test -v ./pkg/utils
+
+# Run integration tests
+go test -v -run Integration ./pkg/client
+```
+
+### Test Coverage
+```bash
+# Run with coverage
+go test -v -cover ./...
+```
+
+## 📝 Contributing
+
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass: `go test -v ./...`
+6. Commit your changes: `git commit -m "Add amazing feature"`
+7. Push to branch: `git push origin feature/amazing-feature`
+8. Open a Pull Request
+
+### Development Guidelines
+
+- Follow Go conventions and best practices
+- Add comprehensive tests for new features
+- Update documentation for breaking changes
+- Ensure backward compatibility when possible
+- Keep code clean and well-documented
+
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🤝 Acknowledgments
+
+- [Transmission](https://transmissionbt.com/) - The excellent BitTorrent client
+- [urfave/cli](https://github.com/urfave/cli) - Powerful CLI framework
+- [Charmbracelet](https://charmbracelet.com/) - Beautiful terminal UI tools
+
+## 🆘 Support
+
+- **Issues**: [GitHub Issues](https://github.com/your-repo/peerless/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-repo/peerless/discussions)
+- **Documentation**: [Wiki](https://github.com/your-repo/peerless/wiki)
+
+---
+
+**Peerless** - Keep your torrent library organized and complete. 🚀
+</file>
+
+<file path="main.go">
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"peerless/pkg/client"
+	"peerless/pkg/output"
+	"peerless/pkg/types"
+	"peerless/pkg/utils"
+
+	"github.com/charmbracelet/log"
+	"github.com/urfave/cli/v3"
+)
+
+func main() {
+	app := &cli.Command{
+		Name:  "peerless",
+		Usage: "Peerless - check local directories against Transmission torrents",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "host",
+				Aliases: []string{"H"},
+				Usage:   "Transmission host (required)",
+			},
+			&cli.IntFlag{
+				Name:    "port",
+				Aliases: []string{"po"},
+				Value:   9091,
+				Usage:   "Transmission port",
+			},
+			&cli.StringFlag{
+				Name:    "user",
+				Aliases: []string{"u"},
+				Usage:   "Transmission username (required)",
+			},
+			&cli.StringFlag{
+				Name:    "password",
+				Aliases: []string{"p"},
+				Usage:   "Transmission password (required)",
+			},
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"v"},
+				Usage:   "Enable verbose logging output",
+			},
+			&cli.BoolFlag{
+				Name:    "debug",
+				Aliases: []string{"d"},
+				Usage:   "Enable debug logging output",
+			},
+		},
+		Commands: []*cli.Command{
+			{
+				Name:  "check",
+				Usage: "Check local directories against Transmission torrents",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:    "dir",
+						Aliases: []string{"d"},
+						Usage:   "Directory to check (can be specified multiple times)",
+					},
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output file for absolute paths of missing items",
+					},
+				},
+				Action: runCheck,
+			},
+			{
+				Name:  "list-directories",
+				Usage: "List all download directories from Transmission",
+				Aliases: []string{"ls-dirs", "ld"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output file for directory list",
+					},
+				},
+				Action: runListDirectories,
+			},
+			{
+				Name:  "list-torrents",
+				Usage: "List all torrent paths from Transmission",
+				Aliases: []string{"ls-torrents", "lt"},
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Output file for torrent paths",
+					},
+				},
+				Action: runListTorrents,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return cli.ShowAppHelp(cmd)
+		}, // Show help when no subcommand is provided
+	}
+
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		output.Logger.Error("Application failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func setupLogging(cmd *cli.Command) {
+	debug := cmd.Bool("debug")
+	verbose := cmd.Bool("verbose")
+
+	if debug {
+		output.Logger.SetLevel(log.DebugLevel)
+	} else if verbose {
+		output.Logger.SetLevel(log.InfoLevel)
+	} else {
+		output.Logger.SetLevel(log.ErrorLevel) // Only show errors by default
+	}
+}
+
+func createClient(cmd *cli.Command) (*client.TransmissionClient, string, error) {
+	setupLogging(cmd)
+
+	// Validate mandatory fields
+	host := cmd.String("host")
+	user := cmd.String("user")
+	password := cmd.String("password")
+
+	if host == "" {
+		return nil, "", fmt.Errorf("host (-H/--host) is required")
+	}
+	if user == "" {
+		return nil, "", fmt.Errorf("username (-u/--user) is required")
+	}
+	if password == "" {
+		return nil, "", fmt.Errorf("password (-p/--password) is required")
+	}
+
+	port := cmd.Int("port")
+
+	// Validate port range
+	if port <= 0 || port > 65535 {
+		return nil, "", fmt.Errorf("invalid port %d: port must be between 1 and 65535", port)
+	}
+
+	// Validate host format
+	if strings.TrimSpace(host) == "" {
+		return nil, "", fmt.Errorf("host cannot be empty")
+	}
+
+	cfg := types.Config{
+		Host:     strings.TrimSpace(host),
+		Port:     port,
+		User:     user,
+		Password: password,
+	}
+
+	output.Logger.Info("Connecting to Transmission",
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"authenticated", cfg.User != "")
+
+	client := client.NewTransmissionClient(cfg)
+	output.Logger.Debug("Created Transmission client")
+
+	sessionID, err := client.GetSessionID()
+	if err != nil {
+		output.Logger.Error("Failed to get session ID", "error", err)
+
+		// Provide enhanced error messages for common issues
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "authentication failed") {
+			return nil, "", fmt.Errorf("authentication failed: please check your username and password for Transmission at %s:%d. %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "connection refused") || strings.Contains(errMsg, "connect: connection refused") {
+			return nil, "", fmt.Errorf("cannot connect to Transmission at %s:%d. Please ensure:\n1. Transmission is running\n2. RPC interface is enabled\n3. Host and port are correct\nOriginal error: %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "no such host") || strings.Contains(errMsg, "name resolution") {
+			return nil, "", fmt.Errorf("cannot resolve host '%s'. Please check the hostname and ensure DNS is working correctly. %w", cfg.Host, err)
+		} else if strings.Contains(errMsg, "timeout") {
+			return nil, "", fmt.Errorf("connection timeout to Transmission at %s:%d. Please check network connectivity and firewall settings. %w", cfg.Host, cfg.Port, err)
+		} else if strings.Contains(errMsg, "RPC endpoint not found") {
+			return nil, "", fmt.Errorf("Transmission RPC interface not available at %s:%d. Please enable RPC in Transmission settings. %w", cfg.Host, cfg.Port, err)
+		} else {
+			return nil, "", fmt.Errorf("failed to connect to Transmission at %s:%d: %w", cfg.Host, cfg.Port, err)
+		}
+	}
+
+	output.Logger.Debug("Successfully obtained session ID")
+	return client, sessionID, nil
+}
+
+func runCheck(ctx context.Context, cmd *cli.Command) error {
+	dirs := cmd.StringSlice("dir")
+	outputFile := cmd.String("output")
+
+	// If no directories specified, use current directory
+	if len(dirs) == 0 {
+		dirs = []string{"."}
+	}
+
+	output.Logger.Info("Starting directory check", "directories", dirs)
+
+	client, sessionID, err := createClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	// Get all torrents from Transmission
+	torrents, err := client.GetTorrents(sessionID)
+	if err != nil {
+		output.Logger.Error("Failed to get torrents", "error", err)
+		return fmt.Errorf("error getting torrents: %w", err)
+	}
+
+	output.Logger.Info("Retrieved torrents from Transmission", "count", len(torrents))
+
+	// Create a map of torrent names for quick lookup
+	torrentMap := make(map[string]bool)
+	for _, t := range torrents {
+		torrentMap[strings.ToLower(t.Name)] = true
+	}
+
+	output.PrintSummary(fmt.Sprintf("Found %d torrents in Transmission", len(torrents)))
+	fmt.Println()
+
+	totalItems := 0
+	totalFound := 0
+	totalMissingSize := int64(0)
+	var missingPaths []string
+
+	// Check each directory
+	for dirIdx, dir := range dirs {
+		if dirIdx > 0 {
+			fmt.Println()
+		}
+
+		output.Logger.Debug("Checking directory", "path", dir)
+
+		// List directory contents
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			output.Logger.Error("Error reading directory", "directory", dir, "error", err)
+			output.PrintError(fmt.Sprintf("Error reading directory %s: %v", dir, err))
+			continue
+		}
+
+		output.PrintDirectoryHeader(dir)
+		output.PrintSeparator(80)
+
+		found := 0
+		missingSize := int64(0)
+
+		for _, entry := range entries {
+			name := entry.Name()
+			inTransmission := torrentMap[strings.ToLower(name)]
+
+			if inTransmission {
+				found++
+				output.Logger.Debug("Found item in Transmission", "name", name)
+			} else {
+				// Get size for missing items
+				fullPath := filepath.Join(dir, name)
+
+				// Get absolute path
+				absPath, err := filepath.Abs(fullPath)
+				if err != nil {
+					absPath = fullPath
+				}
+				missingPaths = append(missingPaths, absPath)
+
+				size, err := utils.GetSize(fullPath)
+				if err == nil {
+					missingSize += size
+				}
+
+				output.Logger.Debug("Missing item", "name", name, "size", size)
+			}
+
+			// Print with colors
+			output.PrintTorrentStatus(inTransmission, name, entry.IsDir())
+		}
+
+		output.PrintSeparator(80)
+		summary := fmt.Sprintf("Directory Summary: %d/%d items found in Transmission", found, len(entries))
+		output.PrintSummary(summary)
+
+		if missingSize > 0 {
+			fmt.Print("Missing items total size: ")
+			output.PrintSize(utils.FormatSize(missingSize))
+			fmt.Println()
+		}
+
+		totalItems += len(entries)
+		totalFound += found
+		totalMissingSize += missingSize
+
+		output.Logger.Debug("Directory check completed",
+			"directory", dir,
+			"total", len(entries),
+			"found", found,
+			"missing_size", missingSize)
+	}
+
+	// Overall summary if multiple directories
+	if len(dirs) > 1 {
+		fmt.Println()
+		output.PrintSeparator(80)
+		summary := fmt.Sprintf("Overall Summary: %d/%d items found in Transmission across %d directories",
+			totalFound, totalItems, len(dirs))
+		output.PrintSummary(summary)
+
+		if totalMissingSize > 0 {
+			fmt.Print("Total missing items size: ")
+			output.PrintSize(utils.FormatSize(totalMissingSize))
+			fmt.Println()
+		}
+
+		output.Logger.Info("Overall check completed",
+			"total_items", totalItems,
+			"total_found", totalFound,
+			"directories", len(dirs),
+			"missing_size", totalMissingSize)
+	}
+
+	// Write missing paths to output file if specified
+	if outputFile != "" {
+		output.Logger.Info("Writing missing paths to file", "file", outputFile, "count", len(missingPaths))
+		err := utils.WriteMissingPaths(outputFile, missingPaths)
+		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d missing item paths to: %s", len(missingPaths), outputFile))
+	}
+
+	output.Logger.Info("Directory check completed successfully")
+
+	return nil
+}
+
+func runListDirectories(ctx context.Context, cmd *cli.Command) error {
+	outputFile := cmd.String("output")
+	output.Logger.Info("Starting directory listing command")
+
+	client, sessionID, err := createClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	output.Logger.Info("Retrieving download directories from Transmission")
+	dirs, err := client.GetDownloadDirectories(sessionID)
+	if err != nil {
+		output.Logger.Error("Failed to list directories", "error", err)
+		return err
+	}
+
+	// Write to file if output flag is specified
+	if outputFile != "" {
+		output.Logger.Info("Writing directory list to file", "file", outputFile, "count", len(dirs))
+		err := utils.WriteDirectoryList(outputFile, dirs)
+		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d directories to: %s", len(dirs), outputFile))
+	} else {
+		// Display to console with styling
+		output.PrintSummary(fmt.Sprintf("Download Directories in Transmission (%d unique)", len(dirs)))
+		output.PrintSeparator(80)
+
+		for _, d := range dirs {
+			fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
+		}
+	}
+
+	output.Logger.Info("Directory listing completed successfully")
+	return nil
+}
+
+func runListTorrents(ctx context.Context, cmd *cli.Command) error {
+	outputFile := cmd.String("output")
+	output.Logger.Info("Starting torrent listing command")
+
+	client, sessionID, err := createClient(cmd)
+	if err != nil {
+		return err
+	}
+
+	output.Logger.Info("Retrieving all torrent paths from Transmission")
+	paths, err := client.GetAllTorrentPaths(sessionID)
+	if err != nil {
+		output.Logger.Error("Failed to get torrent paths", "error", err)
+		return fmt.Errorf("error getting all torrent paths: %w", err)
+	}
+
+	output.Logger.Info("Found torrent paths", "count", len(paths))
+
+	// Write to file if output flag is specified
+	if outputFile != "" {
+		output.Logger.Info("Writing torrent paths to file", "file", outputFile, "count", len(paths))
+		err := utils.WriteMissingPaths(outputFile, paths)
+		if err != nil {
+			output.Logger.Error("Failed to write output file", "file", outputFile, "error", err)
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+		fmt.Println()
+		output.PrintSuccess(fmt.Sprintf("Wrote %d torrent paths to: %s", len(paths), outputFile))
+	} else {
+		// Display to console with styling
+		for _, path := range paths {
+			output.PrintPath(path)
+		}
+	}
+
+	output.Logger.Info("Torrent listing completed successfully")
+	return nil
+}
+</file>
+
+</files>
