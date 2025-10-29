@@ -9,60 +9,72 @@ import (
 	"github.com/charmbracelet/log"
 )
 
+// Color constants for better readability
+const (
+	ColorGreen  = lipgloss.Color("10")
+	ColorRed    = lipgloss.Color("9")
+	ColorYellow = lipgloss.Color("11")
+	ColorBlue   = lipgloss.Color("12")
+	ColorMagenta = lipgloss.Color("13")
+	ColorCyan   = lipgloss.Color("14")
+	ColorGray   = lipgloss.Color("8")
+	ColorWhite  = lipgloss.Color("15")
+)
+
 var (
 	// Color styles
 	SuccessStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("10")) // Green
+				Foreground(ColorGreen)
 
 	ErrorStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("9")) // Red
+			Foreground(ColorRed)
 
 	WarningStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("11")) // Yellow
+			Foreground(ColorYellow)
 
 	InfoStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("12")) // Blue
+			Foreground(ColorBlue)
 
 	HeaderStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("13")) // Magenta
+			Foreground(ColorMagenta)
 
 	PathStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("14")) // Cyan
+			Foreground(ColorCyan)
 
 	SizeStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")) // Bright Black/Gray
+			Foreground(ColorGray)
 
 	FoundStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("10")) // Green
+			Foreground(ColorGreen)
 
 	MissingStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("9")) // Red
+			Foreground(ColorRed)
 
 	// Specialized styles
 	DirectoryHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("11")) // Yellow
+				Foreground(ColorYellow)
 
 	SeparatorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")) // Gray
+			Foreground(ColorGray)
 
 	SummaryStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("14")) // Cyan
+			Foreground(ColorCyan)
 
 	FileStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")) // White
+			Foreground(ColorWhite)
 
 	DirStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("13")) // Magenta
+			Foreground(ColorMagenta)
 
 	// Status symbols
 	SuccessSymbol = SuccessStyle.Render("✓")
@@ -90,7 +102,10 @@ func init() {
 
 // isTerminal checks if stdout is a terminal
 func isTerminal() bool {
-	fileInfo, _ := os.Stdout.Stat()
+	fileInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
 	return (fileInfo.Mode() & os.ModeCharDevice) != 0
 }
 

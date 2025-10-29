@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 
@@ -13,18 +14,21 @@ import (
 func GetSize(path string) (int64, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to stat %s: %w", path, err)
 	}
 
 	if !info.IsDir() {
 		return info.Size(), nil
 	}
 
-	// For directories, calculate total size recursively
 	var totalSize int64
-	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+	var walkErr error
+
+	err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip errors, continue walking
+			// Log but don't fail entirely - collect the error but continue walking
+			walkErr = fmt.Errorf("error accessing %s: %w", p, err)
+			return nil
 		}
 		if !d.IsDir() {
 			fileInfo, err := d.Info()
@@ -35,7 +39,16 @@ func GetSize(path string) (int64, error) {
 		return nil
 	})
 
-	return totalSize, err
+	if err != nil {
+		return totalSize, err
+	}
+
+	// Return any walk errors that occurred but don't fail if we have some size data
+	if walkErr != nil {
+		return totalSize, walkErr
+	}
+
+	return totalSize, nil
 }
 
 func FormatSize(bytes int64) string {
@@ -56,19 +69,39 @@ func FormatSize(bytes int64) string {
 func WriteMissingPaths(filename string, paths []string) error {
 	file, err := os.Create(filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file %s: %w", filename, err)
 	}
 	defer file.Close()
 
 	for _, path := range paths {
 		cleanPath := SanitizeString(path)
-		_, err := file.WriteString(cleanPath + "\n")
-		if err != nil {
-			return err
+		if _, err := file.WriteString(cleanPath + "\n"); err != nil {
+			return fmt.Errorf("failed to write path %s to file %s: %w", path, filename, err)
 		}
 	}
 
+	// Ensure all data is flushed to disk
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file %s: %w", filename, err)
+	}
+
 	return nil
+}
+
+// NormalizeName normalizes a name for comparison based on OS case sensitivity
+func NormalizeName(name string) string {
+	if isCaseSensitive() {
+		return name
+	}
+	return strings.ToLower(name)
+}
+
+// isCaseSensitive determines if the current file system is case-sensitive
+func isCaseSensitive() bool {
+	// Windows is case-insensitive by default
+	// macOS can be case-insensitive (APFS default) or case-sensitive (APFS case-sensitive)
+	// Linux is typically case-sensitive
+	return runtime.GOOS != "windows"
 }
 
 // SanitizeString removes control characters and LTR/RTL marks from strings

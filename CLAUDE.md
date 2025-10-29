@@ -35,11 +35,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Automatic color detection and terminal compatibility
   - Logger integration with configurable levels
 
+- **`pkg/constants/`**: Application constants
+  - Default ports, timeouts, file size units, display constants
+  - Unicode control character definitions
+
 ## Development Commands
 
 ### Building
 ```bash
+# Simple build
 go build -o peerless main.go
+
+# Clean build with goreleaser (includes cross-compilation)
+goreleaser build --clean
 ```
 
 ### Testing
@@ -51,11 +59,21 @@ go test -v ./...
 go test -v ./pkg/client
 go test -v ./pkg/utils
 go test -v ./pkg/types
+
+# Run with coverage
+go test -v -cover ./...
+
+# Run integration tests
+go test -v -run Integration ./pkg/client
 ```
 
-### Release Building (with GoReleaser)
+### Dependency Management
 ```bash
-goreleaser build --clean
+# Tidy dependencies
+go mod tidy
+
+# Generate code (if needed)
+go generate ./...
 ```
 
 ## Dependencies
@@ -68,46 +86,64 @@ Main dependencies from `go.mod`:
 
 ## Usage Examples
 
+**Important**: All operations require authentication with Transmission.
+
 ```bash
 # Check current directory against torrents
-./peerless
+./peerless --host localhost --user admin --password secret
 
 # Check specific directories
-./peerless check --dir /path/to/movies --dir /path/to/tv
+./peerless --host localhost --user admin --password secret check --dir /path/to/movies --dir /path/to/tv
 
 # Connect to remote Transmission with authentication
 ./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
 
 # Export missing items to file
-./peerless --output missing.txt
+./peerless --host localhost --user admin --password secret --output missing.txt
 
 # List all Transmission download directories
-./peerless list-directories
+./peerless --host localhost --user admin --password secret list-directories
 
 # List all torrent paths
-./peerless list-torrents
+./peerless --host localhost --user admin --password secret list-torrents
 
 # Enable verbose/debug logging
-./peerless --verbose
-./peerless --debug
+./peerless --host localhost --user admin --password secret --verbose
+./peerless --host localhost --user admin --password secret --debug
+
+# Delete missing files (DESTRUCTIVE - use with caution)
+./peerless --host localhost --user admin --password secret check --rm
+
+# Preview deletions (dry run)
+./peerless --host localhost --user admin --password secret check --dry-run
 ```
 
 ## Configuration
 
 The application connects to Transmission via HTTP RPC API:
-- Default host: `localhost`
-- Default port: `9091`
-- Optional basic authentication support
+- **Required parameters**: host, username, password (all mandatory)
+- Default port: `9091` (configurable)
+- Basic authentication support
 - Session ID management for request authentication
+- Port validation: must be between 1-65535
 
 ## Testing Notes
 
-Tests use `httptest` for mocking Transmission RPC responses. No running Transmission instance is required for unit tests. Test files follow Go's standard `_test.go` naming convention.
+Tests use `httptest` for mocking Transmission RPC responses. No running Transmission instance is required for unit tests. Test files follow Go's standard `_test.go` naming convention. Integration tests are available for end-to-end testing.
 
 ## Code Style
 
 - Standard Go formatting (`gofmt`)
 - Package-based architecture with clear separation of concerns
-- Error handling with explicit error returns
-- Structured logging with different verbosity levels
+- Error handling with explicit error returns and enhanced error messages
+- Structured logging with different verbosity levels (error by default)
 - Color-aware terminal output with fallback for non-TTY environments
+- Comprehensive input validation for all required parameters
+
+## Build Configuration
+
+The project uses GoReleaser for cross-platform builds:
+- Supports Linux, Windows, macOS (amd64, i386)
+- ARM support for Linux (armv7)
+- Automatic archive creation (tar.gz/zip)
+- Configurable build matrix in `.goreleaser.yaml`

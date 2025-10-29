@@ -240,7 +240,7 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 	// Create a map of torrent names for quick lookup
 	torrentMap := make(map[string]bool)
 	for _, t := range torrents {
-		torrentMap[strings.ToLower(t.Name)] = true
+		torrentMap[utils.NormalizeName(t.Name)] = true
 	}
 
 	output.PrintSummary(fmt.Sprintf("Found %d torrents in Transmission", len(torrents)))
@@ -275,7 +275,7 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 
 		for _, entry := range entries {
 			name := entry.Name()
-			inTransmission := torrentMap[strings.ToLower(name)]
+			inTransmission := torrentMap[utils.NormalizeName(name)]
 
 			if inTransmission {
 				found++
@@ -422,7 +422,11 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 			// Ask for confirmation for actual deletion
 			fmt.Print("❓ Are you sure you want to delete these files? This action cannot be undone! (yes/No): ")
 			var response string
-			fmt.Scanln(&response)
+			_, err := fmt.Scanln(&response)
+			if err != nil {
+				output.Logger.Warn("Failed to read input, cancelling deletion", "error", err)
+				response = "no"
+			}
 
 			response = strings.ToLower(strings.TrimSpace(response))
 			if response == "yes" || response == "y" {
