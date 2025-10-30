@@ -173,7 +173,13 @@ func (c *TransmissionClient) GetTorrents(ctx context.Context) ([]types.TorrentIn
 	reqBody := types.TransmissionRequest{
 		Method: "torrent-get",
 		Arguments: map[string]interface{}{
-			"fields": []string{"id", "name", "downloadDir", "hashString"},
+			"fields": []string{
+				"id", "name", "downloadDir", "hashString",
+				"totalSize", "sizeWhenDone", "leftUntilDone",
+				"rateDownload", "rateUpload", "percentDone",
+				"status", "addedDate", "doneDate",
+				"uploadedEver", "downloadedEver", "uploadRatio",
+			},
 		},
 	}
 
@@ -243,4 +249,138 @@ func (c *TransmissionClient) GetAllTorrentPathsLegacy(ctx context.Context, sessi
 
 func (c *TransmissionClient) GetDownloadDirectoriesLegacy(ctx context.Context, sessionID string) ([]utils.DirectoryInfo, error) {
 	return c.GetDownloadDirectories(ctx)
+}
+
+// GetSessionInfo retrieves Transmission session information
+func (c *TransmissionClient) GetSessionInfo(ctx context.Context) (*types.SessionInfo, error) {
+	reqBody := types.TransmissionRequest{
+		Method: "session-get",
+		Arguments: map[string]interface{}{
+			"fields": []string{
+				"download-dir", "download-dir-free", "peer-port",
+				"seedRatioLimit", "seedRatioLimited",
+				"uploadSpeed", "downloadSpeed",
+				"alt-speed-enabled", "alt-speed-up", "alt-speed-down",
+			},
+		},
+	}
+
+	sessionID, err := c.getSessionID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request to JSON: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Transmission-Session-Id", sessionID)
+
+	if c.config.User != "" {
+		req.SetBasicAuth(c.config.User, c.config.Password)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, errors.NewTransmissionError(0, c.config.Host, c.config.Port, err)
+	}
+	defer resp.Body.Close()
+
+	// Handle session conflict - invalidate and retry once
+	if resp.StatusCode == 409 {
+		c.sessionLock.Lock()
+		c.sessionID = ""
+		c.sessionLock.Unlock()
+		return c.GetSessionInfo(ctx)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, errors.NewTransmissionError(resp.StatusCode, c.config.Host, c.config.Port, nil)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var result types.TransmissionSessionResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	if result.Result != "success" {
+		return nil, fmt.Errorf("transmission returned: %s", result.Result)
+	}
+
+	return &result.Arguments, nil
+}
+
+// GetSessionStats retrieves Transmission session statistics
+func (c *TransmissionClient) GetSessionStats(ctx context.Context) (*types.SessionStats, *types.SessionStats, error) {
+	reqBody := types.TransmissionRequest{
+		Method: "session-stats",
+	}
+
+	sessionID, err := c.getSessionID(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal request to JSON: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Transmission-Session-Id", sessionID)
+
+	if c.config.User != "" {
+		req.SetBasicAuth(c.config.User, c.config.Password)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, errors.NewTransmissionError(0, c.config.Host, c.config.Port, err)
+	}
+	defer resp.Body.Close()
+
+	// Handle session conflict - invalidate and retry once
+	if resp.StatusCode == 409 {
+		c.sessionLock.Lock()
+		c.sessionID = ""
+		c.sessionLock.Unlock()
+		return c.GetSessionStats(ctx)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, nil, errors.NewTransmissionError(resp.StatusCode, c.config.Host, c.config.Port, nil)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var result types.TransmissionStatsResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	if result.Result != "success" {
+		return nil, nil, fmt.Errorf("transmission returned: %s", result.Result)
+	}
+
+	return &result.Arguments.CurrentStats, &result.Arguments.CumulativeStats, nil
 }

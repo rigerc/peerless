@@ -110,6 +110,19 @@ func main() {
 				},
 				Action: runListTorrents,
 			},
+			{
+				Name:    "status",
+				Usage:   "Show Transmission statistics and status information",
+				Aliases: []string{"stat", "info"},
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "compact",
+						Aliases: []string{"c"},
+						Usage:   "Show compact status without detailed breakdown",
+					},
+				},
+				Action: runStatus,
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			return cli.ShowAppHelp(cmd)
@@ -510,5 +523,68 @@ func runListTorrents(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	output.Logger.Info("Torrent listing completed successfully")
+	return nil
+}
+
+func runStatus(ctx context.Context, cmd *cli.Command) error {
+	compact := cmd.Bool("compact")
+	output.Logger.Info("Starting status command")
+
+	svc, err := createService(ctx, cmd)
+	if err != nil {
+		return err
+	}
+
+	output.Logger.Info("Retrieving Transmission status information")
+	status, err := svc.GetDetailedStatus(ctx)
+	if err != nil {
+		output.Logger.Error("Failed to get status", "error", err)
+		return fmt.Errorf("error getting status: %w", err)
+	}
+
+	if compact {
+		// Ultra-compact one-line output
+		output.PrintCompactStatus(
+			status.TotalTorrents,
+			status.DownloadingTorrents,
+			status.SeedingTorrents,
+			status.PausedTorrents,
+			status.TotalDownloadSpeed,
+			status.TotalUploadSpeed,
+			status.TotalSize,
+			status.FreeSpace,
+		)
+	} else {
+		// Concise multi-line output
+		output.PrintStatusHeader("Transmission Status")
+		output.PrintStatusSummary(
+			status.TotalTorrents,
+			status.DownloadingTorrents,
+			status.SeedingTorrents,
+			status.PausedTorrents,
+			status.TotalDownloadSpeed,
+			status.TotalUploadSpeed,
+			status.TotalSize,
+			status.DownloadedSize,
+			status.RemainingSize,
+			status.FreeSpace,
+		)
+
+		// Session info (single line)
+		fmt.Printf("Directory: %s • Port: %s",
+			output.PathStyle.Render(status.DownloadDir),
+			fmt.Sprintf("%d", status.PeerPort))
+		if status.AltSpeedEnabled {
+			fmt.Printf(" • %s", output.WarningStyle.Render("Speed limits"))
+		}
+		fmt.Println()
+
+		// Directory breakdown (simplified)
+		if len(status.DirectoryBreakdown) > 1 {
+			output.PrintSimpleDirectoryList(status.DirectoryBreakdown)
+		}
+	}
+
+	output.Logger.Info("Status command completed successfully")
 	return nil
 }

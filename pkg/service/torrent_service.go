@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"peerless/pkg/client"
+	"peerless/pkg/types"
 	"peerless/pkg/utils"
 )
 
@@ -131,6 +132,126 @@ func (s *TorrentService) GetTorrentStatistics(ctx context.Context) (*TorrentStat
 	}
 
 	return stats, nil
+}
+
+// DetailedStatus contains comprehensive Transmission status information
+type DetailedStatus struct {
+	// Torrent counts
+	TotalTorrents      int
+	DownloadingTorrents int
+	SeedingTorrents    int
+	PausedTorrents     int
+	CompletedTorrents  int
+
+	// Size information
+	TotalSize         int64
+	DownloadedSize    int64
+	RemainingSize     int64
+
+	// Speed information
+	TotalDownloadSpeed int
+	TotalUploadSpeed   int
+
+	// Session information
+	DownloadDir    string
+	FreeSpace      int64
+	PeerPort       int
+	AltSpeedEnabled bool
+
+	// Statistics
+	CurrentSessionStats  *types.SessionStats
+	CumulativeStats     *types.SessionStats
+
+	// Torrent breakdown by directory
+	DirectoryBreakdown map[string]DirectoryStatus
+}
+
+// DirectoryStatus contains status for a specific download directory
+type DirectoryStatus struct {
+	TorrentCount    int
+	TotalSize       int64
+	DownloadedSize  int64
+	FreeSpace       int64
+}
+
+// GetDetailedStatus returns comprehensive Transmission status
+func (s *TorrentService) GetDetailedStatus(ctx context.Context) (*DetailedStatus, error) {
+	// Get all torrents with detailed information
+	torrents, err := s.client.GetTorrents(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve torrents: %w", err)
+	}
+
+	// Get session information
+	sessionInfo, err := s.client.GetSessionInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve session info: %w", err)
+	}
+
+	// Get session statistics
+	currentStats, cumulativeStats, err := s.client.GetSessionStats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve session stats: %w", err)
+	}
+
+	status := &DetailedStatus{
+		TotalTorrents:       len(torrents),
+		TotalSize:          0,
+		DownloadedSize:     0,
+		RemainingSize:      0,
+		TotalDownloadSpeed: 0,
+		TotalUploadSpeed:   0,
+		DownloadDir:        sessionInfo.DownloadDir,
+		FreeSpace:          sessionInfo.DownloadDirFree,
+		PeerPort:           sessionInfo.PeerPort,
+		AltSpeedEnabled:    sessionInfo.AltSpeedEnabled,
+		CurrentSessionStats: currentStats,
+		CumulativeStats:    cumulativeStats,
+		DirectoryBreakdown: make(map[string]DirectoryStatus),
+	}
+
+	// Process torrents
+	for _, torrent := range torrents {
+		status.TotalSize += torrent.TotalSize
+		status.DownloadedSize += torrent.DownloadedEver
+		status.RemainingSize += torrent.LeftUntilDone
+		status.TotalDownloadSpeed += torrent.RateDownload
+		status.TotalUploadSpeed += torrent.RateUpload
+
+		// Count by status
+		switch torrent.Status {
+		case 0: // Stopped
+			if torrent.PercentDone >= 1.0 {
+				status.CompletedTorrents++
+			} else {
+				status.PausedTorrents++
+			}
+		case 1: // Queued to verify
+		case 2: // Verifying
+		case 3: // Queued to download
+		case 4: // Downloading
+			status.DownloadingTorrents++
+		case 5: // Queued to seed
+		case 6: // Seeding
+			status.SeedingTorrents++
+		}
+
+		// Directory breakdown
+		dirStatus, exists := status.DirectoryBreakdown[torrent.DownloadDir]
+		if !exists {
+			dirStatus = DirectoryStatus{
+				FreeSpace: sessionInfo.DownloadDirFree, // Use global free space as fallback
+			}
+		}
+
+		dirStatus.TorrentCount++
+		dirStatus.TotalSize += torrent.TotalSize
+		dirStatus.DownloadedSize += torrent.DownloadedEver
+
+		status.DirectoryBreakdown[torrent.DownloadDir] = dirStatus
+	}
+
+	return status, nil
 }
 
 // CompareResult represents the result of comparing local vs Transmission
