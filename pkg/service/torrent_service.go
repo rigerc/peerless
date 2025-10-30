@@ -137,29 +137,29 @@ func (s *TorrentService) GetTorrentStatistics(ctx context.Context) (*TorrentStat
 // DetailedStatus contains comprehensive Transmission status information
 type DetailedStatus struct {
 	// Torrent counts
-	TotalTorrents      int
+	TotalTorrents       int
 	DownloadingTorrents int
-	SeedingTorrents    int
-	PausedTorrents     int
-	CompletedTorrents  int
+	SeedingTorrents     int
+	PausedTorrents      int
+	CompletedTorrents   int
 
 	// Size information
-	TotalSize         int64
-	DownloadedSize    int64
-	RemainingSize     int64
+	TotalSize      int64
+	DownloadedSize int64
+	RemainingSize  int64
 
 	// Speed information
 	TotalDownloadSpeed int
 	TotalUploadSpeed   int
 
 	// Session information
-	DownloadDir    string
-	FreeSpace      int64
-	PeerPort       int
+	DownloadDir     string
+	FreeSpace       int64
+	PeerPort        int
 	AltSpeedEnabled bool
 
 	// Statistics
-	CurrentSessionStats  *types.SessionStats
+	CurrentSessionStats *types.SessionStats
 	CumulativeStats     *types.SessionStats
 
 	// Torrent breakdown by directory
@@ -168,10 +168,10 @@ type DetailedStatus struct {
 
 // DirectoryStatus contains status for a specific download directory
 type DirectoryStatus struct {
-	TorrentCount    int
-	TotalSize       int64
-	DownloadedSize  int64
-	FreeSpace       int64
+	TorrentCount   int
+	TotalSize      int64
+	DownloadedSize int64
+	FreeSpace      int64
 }
 
 // GetDetailedStatus returns comprehensive Transmission status
@@ -196,18 +196,18 @@ func (s *TorrentService) GetDetailedStatus(ctx context.Context) (*DetailedStatus
 
 	status := &DetailedStatus{
 		TotalTorrents:       len(torrents),
-		TotalSize:          0,
-		DownloadedSize:     0,
-		RemainingSize:      0,
-		TotalDownloadSpeed: 0,
-		TotalUploadSpeed:   0,
-		DownloadDir:        sessionInfo.DownloadDir,
-		FreeSpace:          sessionInfo.DownloadDirFree,
-		PeerPort:           sessionInfo.PeerPort,
-		AltSpeedEnabled:    sessionInfo.AltSpeedEnabled,
+		TotalSize:           0,
+		DownloadedSize:      0,
+		RemainingSize:       0,
+		TotalDownloadSpeed:  0,
+		TotalUploadSpeed:    0,
+		DownloadDir:         sessionInfo.DownloadDir,
+		FreeSpace:           sessionInfo.DownloadDirFree,
+		PeerPort:            sessionInfo.PeerPort,
+		AltSpeedEnabled:     sessionInfo.AltSpeedEnabled,
 		CurrentSessionStats: currentStats,
-		CumulativeStats:    cumulativeStats,
-		DirectoryBreakdown: make(map[string]DirectoryStatus),
+		CumulativeStats:     cumulativeStats,
+		DirectoryBreakdown:  make(map[string]DirectoryStatus),
 	}
 
 	// Process torrents

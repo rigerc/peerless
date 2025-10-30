@@ -10,30 +10,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Components
 
-- **`main.go`**: CLI entry point using `urfave/cli/v3` with three main commands:
+- **`main.go`**: CLI entry point using `urfave/cli/v3` with four main commands:
   - `check`: Compare local directories with Transmission torrents (default command)
   - `list-directories`: Show all download directories from Transmission
   - `list-torrents`: List all torrent paths from Transmission
+  - `status`: Show Transmission statistics and status information
 
 - **`pkg/client/`**: Transmission RPC client implementation
   - `transmission.go`: Handles HTTP communication with Transmission's RPC API
-  - Supports authentication and session management
-  - Methods: `GetSessionID()`, `GetTorrents()`, `GetAllTorrentPaths()`, `ListDownloadDirectories()`
+  - Supports authentication, session management, and statistics retrieval
+  - Methods: `GetSessionID()`, `GetTorrents()`, `GetAllTorrentPaths()`, `GetDownloadDirectories()`, `GetSessionInfo()`, `GetSessionStats()`
 
 - **`pkg/types/`**: Data structures for Transmission API
   - `TransmissionRequest/Response`: RPC message formats
-  - `TorrentInfo`: Torrent metadata (ID, name, downloadDir, hashString)
-  - `Config`: Application configuration
+  - `TorrentInfo`: Comprehensive torrent metadata (ID, name, downloadDir, hashString, size, status, speeds, dates)
+  - `SessionInfo`: Transmission session information (directories, ports, speeds, limits)
+  - `SessionStats`: Session statistics (downloaded/uploaded bytes, file counts)
+  - `Config`: Application configuration with validation methods
+
+- **`pkg/service/`**: Business logic layer
+  - `torrent_service.go`: High-level torrent operations and status reporting
+  - Methods: `CheckDirectories()`, `GetDetailedStatus()`, `GetTorrentStatistics()`, `CompareLocalWithTransmission()`
+  - Handles directory comparison, status aggregation, and result formatting
 
 - **`pkg/utils/`**: File system utilities
   - `GetSize()`: Calculate file/directory sizes recursively
   - `FormatSize()`: Human-readable size formatting
   - `WriteMissingPaths()`: Export missing file paths to file
+  - `DeleteFiles()`: Batch file deletion with progress tracking
+  - `NormalizeName()`: Name normalization for comparison
+
+- **`pkg/errors/`**: Error handling and classification
+  - `transmission_errors.go`: Specialized error types for Transmission API
+  - Functions: `IsAuthenticationError()`, `IsConnectionError()`
+  - Enhanced error messages with context and troubleshooting hints
 
 - **`pkg/output/`**: Styled terminal output using Lipgloss
   - Color-coded status display (found/missing items)
   - Automatic color detection and terminal compatibility
   - Logger integration with configurable levels
+  - Specialized display functions: `PrintStatusHeader()`, `PrintCompactStatus()`, `PrintSummary()`
 
 - **`pkg/constants/`**: Application constants
   - Default ports, timeouts, file size units, display constants
@@ -84,6 +100,8 @@ Main dependencies from `go.mod`:
 - `github.com/charmbracelet/lipgloss`: Terminal styling
 - `github.com/charmbracelet/log`: Structured logging
 
+**Go Version**: Requires Go 1.25.3+
+
 ## Usage Examples
 
 **Important**: All operations require authentication with Transmission.
@@ -106,6 +124,10 @@ Main dependencies from `go.mod`:
 
 # List all torrent paths
 ./peerless --host localhost --user admin --password secret list-torrents
+
+# Show Transmission status and statistics
+./peerless --host localhost --user admin --password secret status
+./peerless --host localhost --user admin --password secret status --compact
 
 # Enable verbose/debug logging
 ./peerless --host localhost --user admin --password secret --verbose

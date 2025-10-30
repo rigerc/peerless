@@ -47,11 +47,11 @@ type SessionInfo struct {
 
 // SessionStats contains Transmission session statistics
 type SessionStats struct {
-	DownloadedBytes    int64 `json:"downloadedBytes"`
-	UploadedBytes      int64 `json:"uploadedBytes"`
-	FilesAdded         int   `json:"filesAdded"`
-	SessionCount       int   `json:"sessionCount"`
-	SecondsActive      int   `json:"secondsActive"`
+	DownloadedBytes int64 `json:"downloadedBytes"`
+	UploadedBytes   int64 `json:"uploadedBytes"`
+	FilesAdded      int   `json:"filesAdded"`
+	SessionCount    int   `json:"sessionCount"`
+	SecondsActive   int   `json:"secondsActive"`
 }
 
 // TransmissionSessionResponse represents session-get response
@@ -63,7 +63,7 @@ type TransmissionSessionResponse struct {
 // TransmissionStatsResponse represents session-stats response
 type TransmissionStatsResponse struct {
 	Arguments struct {
-		CurrentStats SessionStats `json:"current-stats"`
+		CurrentStats    SessionStats `json:"current-stats"`
 		CumulativeStats SessionStats `json:"cumulative-stats"`
 	} `json:"arguments"`
 	Result string `json:"result"`

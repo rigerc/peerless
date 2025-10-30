@@ -1,465 +1,125 @@
 # Peerless
 
-A powerful Go CLI tool for managing Transmission torrents by comparing local directories with your torrent library.
+A Go CLI tool for comparing local directories with Transmission torrents to identify missing files and keep your torrent library organized.
 
-## Overview
-
-Peerless connects to your Transmission BitTorrent client and helps you identify which local files and directories are not tracked in torrents. Perfect for maintaining an organized torrent library and ensuring all your media is properly managed.
-
-## ✨ Features
-
-- **🔐 Secure Authentication**: Mandatory authentication for all connections
-- **📁 Directory Analysis**: Compare local directories against torrent names
-- **📊 Multiple Output Formats**: Styled console output or plain text files
-- **🌍 Unicode Support**: Handles international file names and paths
-- **🚀 High Performance**: Fast comparison with efficient algorithms
-- **🛡️ Error Resilience**: Comprehensive error handling with actionable messages
-- **🎨 Beautiful Output**: Color-coded terminal output with automatic formatting
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
-### Pre-built binaries
-
-Binaries are available in release for linux, windows and os x, including a arm-7 one (Synology)
-
-#### From Source
 ```bash
-git clone <repository-url>
-cd peerless
+# Build from source
 go build -o peerless main.go
 ```
 
-#### Using GoReleaser
-```bash
-goreleaser build --clean
-```
+or
+
+# Download pre-built binaries from [releases] (Linux x86, i386 and arm-7, Darwin x86, Windows x86, i386)
 
 ### Basic Usage
 
 ```bash
-# Show help screen
-./peerless
-
 # Check current directory against torrents
-./peerless --host localhost --user admin --password secret check
+./peerless --host localhost --user admin --password secret
 
-# List all Transmission directories
+# Show Transmission status
+./peerless --host localhost --user admin --password secret status
+
+# List all download directories
 ./peerless --host localhost --user admin --password secret list-directories
+```
+
+### Common Options
+
+```bash
+# Check specific directories
+./peerless --host localhost --user admin --password secret check --dir /downloads/movies --dir /downloads/tv
+
+# Export results to file
+./peerless --host localhost --user admin --password secret check --output missing.txt
+
+# Show compact status
+./peerless --host localhost --user admin --password secret status --compact
+
+# Connect to remote Transmission
+./peerless --host 192.168.1.100 --port 9091 --user admin --password secret
+
+# Enable verbose output
+./peerless --host localhost --user admin --password secret --verbose check
+
+# Enable debug logging
+./peerless --host localhost --user admin --password secret --debug status
+
+# Preview file deletion (safe dry run)
+./peerless --host localhost --user admin --password secret check --dry-run
 
 # List all torrent paths
 ./peerless --host localhost --user admin --password secret list-torrents
 ```
 
-## 📖 Commands
+## Features
 
-### `check` (Default Command)
+- **Directory Comparison**: Find local files/directories not tracked in Transmission torrents
+- **Status Monitoring**: View Transmission statistics and session information
+- **File Management**: Safely delete missing files with confirmation and dry-run support
+- **Multiple Formats**: Styled console output or plain text file exports
+- **Secure Authentication**: Mandatory authentication for all connections
 
-Compare local directories with Transmission torrents to find missing items.
+## Commands
 
-```bash
-./peerless --host localhost --user admin --password secret check --dir /downloads/movies --dir /downloads/tv
-```
+- `check` - Compare directories with torrents (default)
+- `status` - Show Transmission statistics
+- `list-directories` - List all download directories
+- `list-torrents` - List all torrent paths
 
-**Flags:**
-- `--dir, -d`: Directory to check (can be specified multiple times)
-- `--output, -o`: Save missing items to file (unstyled output)
-- `--rm, --delete, --remove`: Delete missing files after confirmation (DESTRUCTIVE)
-- `--dry-run, --dry, --simulate`: Show what would be deleted without actually deleting files
-
-**Example Output:**
-```
-Directory: /downloads/movies
---------------------------------------------------------------------------------
-✗ [DIR] Movie.2023.1080p.BluRay.x264
-✓ [DIR] Movie.Collection.2023
-✗ [FILE] Documentary.2024.720p.WEB-DL.x264
---------------------------------------------------------------------------------
-Directory Summary: 1/3 items found in Transmission
-Missing items total size: 25.67 GB
-```
-
-### `list-directories` (Aliases: `ls-dirs`, `ld`)
-
-List all download directories configured in Transmission with torrent counts.
+## Example Usage
 
 ```bash
-./peerless --host localhost --user admin --password secret list-directories
+# Check specific directories
+./peerless --host localhost --user admin --password secret \
+  check --dir /downloads/movies --dir /downloads/tv
 
-# Save to file (plain text)
-./peerless --host localhost --user admin --password secret list-directories --output directories.txt
+# Export missing items to file
+./peerless --host localhost --user admin --password secret \
+  check --output missing.txt
+
+# Show compact status
+./peerless --host localhost --user admin --password secret \
+  status --compact
+
+# Preview file deletion (dry run)
+./peerless --host localhost --user admin --password secret \
+  check --dry-run
+
+# Delete missing files (after review)
+./peerless --host localhost --user admin --password secret \
+  check --rm
 ```
 
-**Output Example:**
-```
-Download Directories in Transmission (3 unique):
---------------------------------------------------------------------------------
-/downloads/movies (15 torrents)
-/downloads/tv (8 torrents)
-/downloads/documentaries (3 torrents)
-```
+## Authentication Required
 
-### `list-torrents` (Aliases: `ls-torrents`, `lt`)
-
-List all torrent paths from Transmission.
-
-```bash
-./peerless --host localhost --user admin --password secret list-torrents
-
-# Save to file (plain text)
-./peerless --host localhost --user admin --password secret list-torrents --output torrents.txt
-```
-
-## ⚙️ Configuration
-
-### Authentication (Required)
-
-Peerless requires authentication for all operations:
-
+All operations require Transmission credentials:
 ```bash
 ./peerless --host <host> --user <username> --password <password> <command>
 ```
 
-**Required Parameters:**
-- `--host, -H`: Transmission server host
-- `--user, -u`: Transmission username
-- `--password, -p`: Transmission password
-
-**Example:**
-```bash
-./peerless --host 192.168.1.100 --user admin --password secret check
-```
-
-### Optional Parameters
-
-- `--port, --po`: Transmission port (default: 9091)
-- `--verbose, -v`: Enable verbose output
-- `--debug, -d`: Enable debug output
-
-## 🎨 Output Modes
-
-### Console Output (Default)
-
-Styled terminal output with colors and formatting:
-
-```
-Directory: /downloads/movies
-🔹 Found: 15/20 items
-❌ Missing: 5 items (12.3 GB)
-```
-
-### File Output (Plain Text)
-
-Unstyled output suitable for scripts and automation:
+## Development
 
 ```bash
-./peerless --host localhost --user admin --password secret check --output missing.txt
-```
-
-**File Content:**
-```
-/downloads/movies/Missing.Movie.2023
-/downloads/movies/Another.Movie.2024
-```
-
-## 🗑️ File Management
-
-### Delete Missing Files
-
-Peerless can automatically delete files and directories that are not found in your Transmission torrents.
-
-**⚠️ IMPORTANT:** This is a destructive action. Always use `--dry-run` first!
-
-#### Safety Features
-
-- **Confirmation Required**: Must type "yes" to confirm deletion
-- **Detailed Preview**: Shows all files/directories with sizes and types before deletion
-- **Dry Run Mode**: Preview what would be deleted without actually deleting
-- **No Conflicts**: Cannot use `--rm` and `--dry-run` together
-- **Error Handling**: Reports any files that failed to delete
-- **Size Information**: Shows individual file/directory sizes plus total size
-
-#### Usage Examples
-
-```bash
-# Dry run - preview what would be deleted (SAFE)
-./peerless --host localhost --user admin --password secret check --dry-run
-
-# Actually delete missing files (after review)
-./peerless --host localhost --user admin --password secret check --rm
-
-# Check specific directory and delete missing files
-./peerless check --dir /downloads/movies --rm
-```
-
-#### Dry Run Output Example
-```
-🔍 DRY RUN MODE - No files will actually be deleted
-
-Files and directories that WOULD be deleted:
-  1. /downloads/movies/Old.Movie.2023 (2.5 GB, file)
-  2. /downloads/movies/Another.Movie.2024 (1.8 GB, file)
-  3. /downloads/movies/Temp.Directory (512 MB, directory)
-  4. /downloads/movies/Old.Series.S01 (15.2 GB, directory)
-
-Total that would be deleted: 4 items (20.3 GB)
-
-🔍 DRY RUN COMPLETED - No files were actually deleted
-💡 To actually delete these files, run the same command with --rm instead of --dry-run
-```
-
-#### Actual Deletion Process
-```
-⚠️  DELETE MODE ENABLED - This will permanently delete files!
-
-Files and directories to be deleted:
-  1. /downloads/movies/Old.Movie.2023 (2.5 GB)
-  2. /downloads/movies/Another.Movie.2024 (1.8 GB)
-
-Total to delete: 2 items (4.3 GB)
-
-❓ Are you sure you want to delete these files? This action cannot be undone! (yes/No): yes
-
-⚠️  Deleting files...
-
-✅ Successfully deleted 2 items (4.3 GB)
-🎉 All missing files deleted successfully!
-```
-
-#### Available Flags
-
-- `--rm`: Delete missing files after confirmation
-- `--delete`: Same as `--rm`
-- `--remove`: Same as `--rm`
-- `--dry-run`: Preview what would be deleted without actually deleting
-- `--dry`: Same as `--dry-run`
-- `--simulate`: Same as `--dry-run`
-
-## 🔧 Transmission Setup
-
-### Enable RPC Access
-
-1. Open Transmission
-2. Go to **Edit → Preferences** (or **Transmission → Preferences** on macOS)
-3. Navigate to **Remote** or **Web** tab
-4. **Enable "Allow remote access"**
-5. Set **Username** and **Password**
-6. Note the **RPC port** (default: 9091)
-7. Click **OK**
-
-### Firewall Configuration
-
-Ensure your firewall allows traffic to the Transmission RPC port:
-- **Default Port**: 9091
-- **Protocol**: HTTP
-- **Source**: Your IP address or range
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### Authentication Failed
-```
-authentication failed: please check your username and password for Transmission at host:port
-```
-**Solution**: Verify your Transmission RPC username and password.
-
-#### Connection Refused
-```
-cannot connect to Transmission at host:port. Please ensure:
-1. Transmission is running
-2. RPC interface is enabled
-3. Host and port are correct
-```
-**Solution**: Check if Transmission is running and RPC is enabled.
-
-#### RPC Not Found
-```
-Transmission RPC endpoint not found at host:port. Ensure Transmission is running and RPC is enabled
-```
-**Solution**: Enable RPC interface in Transmission settings.
-
-#### Port Issues
-```
-invalid port 99999: port must be between 1 and 65535
-```
-**Solution**: Use a valid port number (1-65535).
-
-### Advanced Troubleshooting
-
-#### Enable Debug Logging
-```bash
-./peerless --host localhost --user admin --password secret --debug check
-```
-
-#### Test Connection
-```bash
-# Test basic connectivity
-./peerless --host localhost --user admin --password secret list-directories
-
-# Test with verbose output
-./peerless --host localhost --user admin --password secret --verbose check
-```
-
-#### Verify Transmission Configuration
-1. Check Transmission is running: Open the application
-2. Verify RPC enabled: Preferences → Remote → "Allow remote access"
-3. Confirm credentials: Note exact username and password
-4. Check port: Default is 9091, verify if changed
-
-## 📋 Examples
-
-### Basic Workflow
-```bash
-# 1. Check what directories Transmission knows about
-./peerless --host localhost --user admin --password secret list-directories
-
-# 2. Compare your media directory
-./peerless --host localhost --user admin --password secret check --dir /media/Movies
-
-# 3. Save missing items for later review
-./peerless --host localhost --user admin --password secret check --dir /media/Movies --output missing.txt
-
-# 4. Get complete torrent list
-./peerless --host localhost --user admin --password secret list-torrents --output all-torrents.txt
-```
-
-### Batch Operations
-```bash
-# Check multiple directories
-./peerless --host localhost --user admin --password secret \
-  check \
-  --dir /downloads/movies \
-  --dir /downloads/tv \
-  --dir /downloads/documentaries
-
-# Export all directories
-./peerless --host localhost --user admin --password secret \
-  list-directories --output directories.txt
-
-# Export all torrent paths
-./peerless --host localhost --user admin --password secret \
-  list-torrents --output torrents.txt
-```
-
-### Remote Management
-```bash
-# Connect to remote Transmission server
-./peerless --host 192.168.1.100 --user admin --password secret \
-  check --dir /media/server/Movies
-
-# Different port
-./peerless --host localhost --port 9092 --user admin --password secret \
-  list-directories
-```
-
-## 🏗️ Development
-
-### Building from Source
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd peerless
-
-# Build binary
-go build -o peerless main.go
-
 # Run tests
 go test -v ./...
 
-# Build release version
+# Build with goreleaser
 goreleaser build --clean
+
+# Install dependencies
+go mod tidy
 ```
 
-### Project Structure
+## Architecture
 
-```
-peerless/
-├── main.go              # CLI entry point and command definitions
-├── go.mod               # Go module dependencies
-├── go.sum               # Dependency checksums
-├── .goreleaser.yaml     # Release configuration
-├── README.md            # This file
-└── pkg/
-    ├── client/          # Transmission RPC client
-    │   ├── transmission.go
-    │   └── integration_test.go
-    ├── types/           # Data structures
-    │   └── types.go
-    ├── utils/           # File system utilities
-    │   ├── files.go
-    │   └── integration_test.go
-    └── output/          # Terminal styling
-        └── styles.go
-```
-
-### Dependencies
-
-- **[urfave/cli/v3](https://github.com/urfave/cli)**: Modern CLI framework
-- **[charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss)**: Terminal styling
-- **[charmbracelet/log](https://github.com/charmbracelet/log)**: Structured logging
-- **[stretchr/testify](https://github.com/stretchr/testify)**: Testing utilities
-
-## 🧪 Testing
-
-### Run Tests
-```bash
-# Run all tests
-go test -v ./...
-
-# Run specific package tests
-go test -v ./pkg/client
-go test -v ./pkg/utils
-
-# Run integration tests
-go test -v -run Integration ./pkg/client
-```
-
-### Test Coverage
-```bash
-# Run with coverage
-go test -v -cover ./...
-```
-
-## 📝 Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass: `go test -v ./...`
-6. Commit your changes: `git commit -m "Add amazing feature"`
-7. Push to branch: `git push origin feature/amazing-feature`
-8. Open a Pull Request
-
-### Development Guidelines
-
-- Follow Go conventions and best practices
-- Add comprehensive tests for new features
-- Update documentation for breaking changes
-- Ensure backward compatibility when possible
-- Keep code clean and well-documented
-
-## 📄 License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## 🤝 Acknowledgments
-
-- [Transmission](https://transmissionbt.com/) - The excellent BitTorrent client
-- [urfave/cli](https://github.com/urfave/cli) - Powerful CLI framework
-- [Charmbracelet](https://charmbracelet.com/) - Beautiful terminal UI tools
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](https://github.com/your-repo/peerless/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-repo/peerless/discussions)
-- **Documentation**: [Wiki](https://github.com/your-repo/peerless/wiki)
-
----
-
-**Peerless** - Keep your torrent library organized and complete. 🚀
+- **pkg/client/** - Transmission RPC client with session management
+- **pkg/service/** - Business logic for torrent operations
+- **pkg/types/** - Data structures and configuration validation
+- **pkg/utils/** - File system utilities and batch operations
+- **pkg/output/** - Styled terminal output
+- **pkg/errors/** - Specialized error handling
