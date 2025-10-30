@@ -125,7 +125,7 @@ func TestTransmissionClientIntegration(t *testing.T) {
 			transmissionClient := client.NewTransmissionClient(config)
 
 			// Test GetSessionID
-			sessionID, err := transmissionClient.GetSessionID(context.Background())
+			sessionID, err := transmissionClient.GetSessionIDLegacy(context.Background())
 			if tt.expectSuccess {
 				if err != nil {
 					t.Errorf("GetSessionID failed: %v", err)
@@ -136,7 +136,7 @@ func TestTransmissionClientIntegration(t *testing.T) {
 				}
 
 				// Test GetTorrents
-				torrents, err := transmissionClient.GetTorrents(context.Background(), sessionID)
+				torrents, err := transmissionClient.GetTorrents(context.Background())
 				if err != nil {
 					t.Errorf("GetTorrents failed: %v", err)
 					return
@@ -146,7 +146,7 @@ func TestTransmissionClientIntegration(t *testing.T) {
 				}
 
 				// Test GetDownloadDirectories
-				dirs, err := transmissionClient.GetDownloadDirectories(context.Background(), sessionID)
+				dirs, err := transmissionClient.GetDownloadDirectories(context.Background())
 				if err != nil {
 					t.Errorf("GetDownloadDirectories failed: %v", err)
 					return
@@ -156,7 +156,7 @@ func TestTransmissionClientIntegration(t *testing.T) {
 				}
 
 				// Test GetAllTorrentPaths
-				paths, err := transmissionClient.GetAllTorrentPaths(context.Background(), sessionID)
+				paths, err := transmissionClient.GetAllTorrentPaths(context.Background())
 				if err != nil {
 					t.Errorf("GetAllTorrentPaths failed: %v", err)
 					return
@@ -240,7 +240,7 @@ func TestTransmissionClientHTTPErrors(t *testing.T) {
 			transmissionClient := client.NewTransmissionClient(config)
 
 			// Test GetSessionID
-			_, err := transmissionClient.GetSessionID(context.Background())
+			_, err := transmissionClient.GetSessionIDLegacy(context.Background())
 			if err == nil {
 				t.Errorf("Expected error for status %d, but got none", tt.statusCode)
 				return

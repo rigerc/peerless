@@ -3,3 +3,4 @@ dist/
 test_dir/
 .claude/
 peerless
+scripts/

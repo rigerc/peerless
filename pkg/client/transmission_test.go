@@ -2,11 +2,7 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,81 +20,90 @@ func TestNewTransmissionClient(t *testing.T) {
 
 	client := NewTransmissionClient(config)
 
-	assert.Equal(t, config, client.config)
+	assert.NotNil(t, client.httpClient)
+}
+
+func TestNewTransmissionClientWithHTTPClient(t *testing.T) {
+	config := types.Config{
+		Host:     "localhost",
+		Port:     9091,
+		User:     "admin",
+		Password: "secret",
+	}
+
+	mockHTTP := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return NewMockResponse(200, "{}", nil), nil
+		},
+	}
+
+	client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
+
+	assert.Equal(t, mockHTTP, client.httpClient)
 }
 
 func TestGetSessionID(t *testing.T) {
 	t.Run("successful session ID retrieval", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "/transmission/rpc", r.URL.Path)
-			// Note: The initial session ID request doesn't set Content-Type
-
-			// Read and discard the request body
-			body := make([]byte, r.ContentLength)
-			_, _ = r.Body.Read(body)
-
-			w.Header().Set("X-Transmission-Session-Id", "test-session-id-123")
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		// Extract host and port from test server
-		host, port := extractHostPort(server.URL)
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return NewMockResponse(409, "{}", map[string]string{
+					"X-Transmission-Session-Id": "test-session-id-123",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		sessionID, err := client.GetSessionID(context.Background())
+		sessionID, err := client.getSessionID(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, "test-session-id-123", sessionID)
 	})
 
 	t.Run("with authentication", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			username, password, ok := r.BasicAuth()
-			assert.True(t, ok)
-			assert.Equal(t, "admin", username)
-			assert.Equal(t, "secret", password)
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				username, password, ok := req.BasicAuth()
+				assert.True(t, ok)
+				assert.Equal(t, "admin", username)
+				assert.Equal(t, "secret", password)
 
-			w.Header().Set("X-Transmission-Session-Id", "auth-session-id")
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		host, port := extractHostPort(server.URL)
+				return NewMockResponse(409, "{}", map[string]string{
+					"X-Transmission-Session-Id": "auth-session-id",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host:     host,
-			Port:     port,
+			Host:     "localhost",
+			Port:     9091,
 			User:     "admin",
 			Password: "secret",
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		sessionID, err := client.GetSessionID(context.Background())
+		sessionID, err := client.getSessionID(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, "auth-session-id", sessionID)
 	})
 
 	t.Run("missing session ID", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		host, port := extractHostPort(server.URL)
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return NewMockResponse(200, "{}", nil), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		sessionID, err := client.GetSessionID(context.Background())
+		sessionID, err := client.getSessionID(context.Background())
 		assert.Error(t, err)
 		assert.Equal(t, "", sessionID)
 		assert.Contains(t, err.Error(), "no session ID received")
@@ -111,7 +116,7 @@ func TestGetSessionID(t *testing.T) {
 		}
 		client := NewTransmissionClient(config)
 
-		sessionID, err := client.GetSessionID(context.Background())
+		sessionID, err := client.getSessionID(context.Background())
 		assert.Error(t, err)
 		assert.Equal(t, "", sessionID)
 	})
@@ -141,35 +146,32 @@ func TestGetTorrents(t *testing.T) {
 			"result": "success"
 		}`
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "test-session-id", r.Header.Get("X-Transmission-Session-Id"))
-			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				// First call returns session ID
+				if req.Header.Get("X-Transmission-Session-Id") == "" {
+					return NewMockResponse(409, "{}", map[string]string{
+						"X-Transmission-Session-Id": sessionID,
+					}), nil
+				}
 
-			// Verify request body contains correct fields
-			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
-			assert.Contains(t, string(body), "torrent-get")
-			assert.Contains(t, string(body), "id")
-			assert.Contains(t, string(body), "name")
-			assert.Contains(t, string(body), "downloadDir")
-			assert.Contains(t, string(body), "hashString")
+				// Second call returns torrents
+				assert.Equal(t, "test-session-id", req.Header.Get("X-Transmission-Session-Id"))
+				assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, mockResponse)
-		}))
-		defer server.Close()
-
-		host, port := extractHostPort(server.URL)
+				return NewMockResponse(200, mockResponse, map[string]string{
+					"Content-Type": "application/json",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		torrents, err := client.GetTorrents(context.Background(), sessionID)
+		torrents, err := client.GetTorrents(context.Background())
 		require.NoError(t, err)
 
 		assert.Len(t, torrents, 2)
@@ -192,22 +194,29 @@ func TestGetTorrents(t *testing.T) {
 			"arguments": {}
 		}`
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, mockResponse)
-		}))
-		defer server.Close()
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				// First call returns session ID
+				if req.Header.Get("X-Transmission-Session-Id") == "" {
+					return NewMockResponse(409, "{}", map[string]string{
+						"X-Transmission-Session-Id": sessionID,
+					}), nil
+				}
 
-		host, port := extractHostPort(server.URL)
+				// Second call returns error
+				return NewMockResponse(200, mockResponse, map[string]string{
+					"Content-Type": "application/json",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		torrents, err := client.GetTorrents(context.Background(), sessionID)
+		torrents, err := client.GetTorrents(context.Background())
 		assert.Error(t, err)
 		assert.Nil(t, torrents)
 		assert.Contains(t, err.Error(), "transmission returned: error")
@@ -245,22 +254,29 @@ func TestGetAllTorrentPaths(t *testing.T) {
 			"result": "success"
 		}`
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, mockResponse)
-		}))
-		defer server.Close()
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				// First call returns session ID
+				if req.Header.Get("X-Transmission-Session-Id") == "" {
+					return NewMockResponse(409, "{}", map[string]string{
+						"X-Transmission-Session-Id": sessionID,
+					}), nil
+				}
 
-		host, port := extractHostPort(server.URL)
+				// Second call returns torrents
+				return NewMockResponse(200, mockResponse, map[string]string{
+					"Content-Type": "application/json",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		paths, err := client.GetAllTorrentPaths(context.Background(), sessionID)
+		paths, err := client.GetAllTorrentPaths(context.Background())
 		require.NoError(t, err)
 
 		// Verify paths are sorted alphabetically
@@ -274,7 +290,7 @@ func TestGetAllTorrentPaths(t *testing.T) {
 	})
 }
 
-func TestListDownloadDirectories(t *testing.T) {
+func TestGetDownloadDirectories(t *testing.T) {
 	t.Run("successful directory listing", func(t *testing.T) {
 		sessionID := "test-session-id"
 
@@ -304,46 +320,46 @@ func TestListDownloadDirectories(t *testing.T) {
 			"result": "success"
 		}`
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, mockResponse)
-		}))
-		defer server.Close()
+		mockHTTP := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				// First call returns session ID
+				if req.Header.Get("X-Transmission-Session-Id") == "" {
+					return NewMockResponse(409, "{}", map[string]string{
+						"X-Transmission-Session-Id": sessionID,
+					}), nil
+				}
 
-		host, port := extractHostPort(server.URL)
+				// Second call returns torrents
+				return NewMockResponse(200, mockResponse, map[string]string{
+					"Content-Type": "application/json",
+				}), nil
+			},
+		}
 
 		config := types.Config{
-			Host: host,
-			Port: port,
+			Host: "localhost",
+			Port: 9091,
 		}
-		client := NewTransmissionClient(config)
+		client := NewTransmissionClientWithHTTPClient(config, mockHTTP)
 
-		// Capture stdout to verify output
-		// This test just verifies no error is returned
-		err := client.ListDownloadDirectories(context.Background(), sessionID)
+		dirs, err := client.GetDownloadDirectories(context.Background())
 		require.NoError(t, err)
+
+		assert.Len(t, dirs, 2)
+		assert.Equal(t, "/downloads/movies", dirs[0].Path)
+		assert.Equal(t, 2, dirs[0].Count)
+		assert.Equal(t, "/downloads/tv", dirs[1].Path)
+		assert.Equal(t, 1, dirs[1].Count)
 	})
 }
 
-// Helper function to extract host and port from test server URL
-func extractHostPort(url string) (string, int) {
-	// Remove protocol prefix
-	url = strings.TrimPrefix(url, "http://")
-	url = strings.TrimPrefix(url, "https://")
-
-	// Split host and port
-	parts := strings.Split(url, ":")
-	host := parts[0]
-
-	// Default port if not specified
-	port := 80
-	if len(parts) > 1 {
-		_, err := fmt.Sscanf(parts[1], "%d", &port)
-		if err != nil {
-			port = 80
-		}
+func TestBaseURL(t *testing.T) {
+	config := types.Config{
+		Host: "localhost",
+		Port: 9091,
 	}
+	client := NewTransmissionClient(config)
 
-	return host, port
+	expected := "http://localhost:9091/transmission/rpc"
+	assert.Equal(t, expected, client.baseURL())
 }

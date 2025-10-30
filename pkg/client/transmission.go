@@ -9,16 +9,25 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strings"
+	"sync"
 
 	"peerless/pkg/constants"
+	"peerless/pkg/errors"
 	"peerless/pkg/types"
 	"peerless/pkg/utils"
 )
 
+// HTTPClient interface for easier testing
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// TransmissionClient manages interactions with Transmission RPC
 type TransmissionClient struct {
-	config     types.Config
-	httpClient *http.Client
+	config      types.Config
+	httpClient  HTTPClient
+	sessionID   string
+	sessionLock sync.RWMutex
 }
 
 func NewTransmissionClient(config types.Config) *TransmissionClient {
@@ -30,12 +39,51 @@ func NewTransmissionClient(config types.Config) *TransmissionClient {
 	}
 }
 
-func (c *TransmissionClient) GetSessionID(ctx context.Context) (string, error) {
-	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
+// NewTransmissionClientWithHTTPClient for testing with mock HTTP client
+func NewTransmissionClientWithHTTPClient(config types.Config, httpClient HTTPClient) *TransmissionClient {
+	return &TransmissionClient{
+		config:     config,
+		httpClient: httpClient,
+	}
+}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte("{}")))
+// baseURL returns the Transmission RPC endpoint URL
+func (c *TransmissionClient) baseURL() string {
+	return fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
+}
+
+// getSessionID retrieves the current session ID, or fetches a new one
+func (c *TransmissionClient) getSessionID(ctx context.Context) (string, error) {
+	c.sessionLock.RLock()
+	if c.sessionID != "" {
+		sessionID := c.sessionID
+		c.sessionLock.RUnlock()
+		return sessionID, nil
+	}
+	c.sessionLock.RUnlock()
+
+	c.sessionLock.Lock()
+	defer c.sessionLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if c.sessionID != "" {
+		return c.sessionID, nil
+	}
+
+	sessionID, err := c.fetchSessionID(ctx)
 	if err != nil {
 		return "", err
+	}
+
+	c.sessionID = sessionID
+	return sessionID, nil
+}
+
+// fetchSessionID fetches a new session ID from Transmission
+func (c *TransmissionClient) fetchSessionID(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer([]byte("{}")))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	if c.config.User != "" {
@@ -44,61 +92,37 @@ func (c *TransmissionClient) GetSessionID(ctx context.Context) (string, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", errors.NewTransmissionError(0, c.config.Host, c.config.Port, err)
 	}
 	defer resp.Body.Close()
 
-	// Check for HTTP authentication errors
-	switch resp.StatusCode {
-	case 401:
-		return "", fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
-	case 403:
-		return "", fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
-	case 404:
-		return "", fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
-	case 409:
-		// This is the normal session establishment flow - extract session ID from response
-		sessionID := resp.Header.Get("X-Transmission-Session-Id")
-		if sessionID == "" {
-			return "", fmt.Errorf("session conflict response missing X-Transmission-Session-Id header from Transmission at %s:%d", c.config.Host, c.config.Port)
-		}
-		return sessionID, nil
-	case 500:
-		return "", fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	if resp.StatusCode >= 400 && resp.StatusCode != 409 {
+		return "", errors.NewTransmissionError(resp.StatusCode, c.config.Host, c.config.Port, nil)
 	}
 
-	// Check for other HTTP errors
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
-	}
-
-	// For successful responses (200 OK), extract session ID from header
 	sessionID := resp.Header.Get("X-Transmission-Session-Id")
 	if sessionID == "" {
-		return "", fmt.Errorf("no session ID received from Transmission at %s:%d. Ensure RPC interface is enabled", c.config.Host, c.config.Port)
+		return "", fmt.Errorf("no session ID received from Transmission at %s:%d", c.config.Host, c.config.Port)
 	}
 
 	return sessionID, nil
 }
 
-func (c *TransmissionClient) GetTorrents(ctx context.Context, sessionID string) ([]types.TorrentInfo, error) {
-	url := fmt.Sprintf("http://%s:%d/transmission/rpc", c.config.Host, c.config.Port)
-
-	reqBody := types.TransmissionRequest{
-		Method: "torrent-get",
-		Arguments: map[string]interface{}{
-			"fields": []string{"id", "name", "downloadDir", "hashString"},
-		},
+// doRequest performs an authenticated request to Transmission
+func (c *TransmissionClient) doRequest(ctx context.Context, reqBody types.TransmissionRequest) (*types.TransmissionResponse, error) {
+	sessionID, err := c.getSessionID(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -110,88 +134,93 @@ func (c *TransmissionClient) GetTorrents(ctx context.Context, sessionID string) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.NewTransmissionError(0, c.config.Host, c.config.Port, err)
 	}
 	defer resp.Body.Close()
 
-	// Check for HTTP authentication errors
-	switch resp.StatusCode {
-	case 401:
-		return nil, fmt.Errorf("authentication failed: invalid username or password for Transmission at %s:%d", c.config.Host, c.config.Port)
-	case 403:
-		return nil, fmt.Errorf("access forbidden: insufficient permissions to access Transmission at %s:%d", c.config.Host, c.config.Port)
-	case 404:
-		return nil, fmt.Errorf("Transmission RPC endpoint not found at %s:%d. Ensure Transmission is running and RPC is enabled", c.config.Host, c.config.Port)
-	case 409:
-		return nil, fmt.Errorf("session conflict: invalid session ID. Re-authentication required")
-	case 500:
-		return nil, fmt.Errorf("Transmission server error (500) at %s:%d. Check Transmission logs", c.config.Host, c.config.Port)
+	// Handle session conflict - invalidate and retry once
+	if resp.StatusCode == 409 {
+		c.sessionLock.Lock()
+		c.sessionID = ""
+		c.sessionLock.Unlock()
+
+		return c.doRequest(ctx, reqBody)
 	}
 
-	// Check for other HTTP errors
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP %d error from Transmission at %s:%d", resp.StatusCode, c.config.Host, c.config.Port)
+		return nil, errors.NewTransmissionError(resp.StatusCode, c.config.Host, c.config.Port, nil)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var result types.TransmissionResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return nil, err
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if result.Result != "success" {
 		return nil, fmt.Errorf("transmission returned: %s", result.Result)
 	}
 
-	return result.Arguments.Torrents, nil
+	return &result, nil
 }
 
-func (c *TransmissionClient) GetAllTorrentPaths(ctx context.Context, sessionID string) ([]string, error) {
-	torrents, err := c.GetTorrents(ctx, sessionID)
+// GetTorrents retrieves all torrents from Transmission
+func (c *TransmissionClient) GetTorrents(ctx context.Context) ([]types.TorrentInfo, error) {
+	reqBody := types.TransmissionRequest{
+		Method: "torrent-get",
+		Arguments: map[string]interface{}{
+			"fields": []string{"id", "name", "downloadDir", "hashString"},
+		},
+	}
+
+	resp, err := c.doRequest(ctx, reqBody)
 	if err != nil {
 		return nil, err
 	}
 
-	var paths []string
+	return resp.Arguments.Torrents, nil
+}
+
+// GetAllTorrentPaths returns sorted list of all torrent paths
+func (c *TransmissionClient) GetAllTorrentPaths(ctx context.Context) ([]string, error) {
+	torrents, err := c.GetTorrents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	paths := make([]string, 0, len(torrents))
 	for _, torrent := range torrents {
 		absPath := filepath.Join(torrent.DownloadDir, torrent.Name)
-		// Sanitize the path to remove any control characters
 		cleanPath := utils.SanitizeString(absPath)
 		paths = append(paths, cleanPath)
 	}
 
-	// Sort paths alphabetically
 	sort.Strings(paths)
-
 	return paths, nil
 }
 
-// GetDownloadDirectories returns download directories with their torrent counts
-func (c *TransmissionClient) GetDownloadDirectories(ctx context.Context, sessionID string) ([]utils.DirectoryInfo, error) {
-	torrents, err := c.GetTorrents(ctx, sessionID)
+// GetDownloadDirectories returns download directories with torrent counts
+func (c *TransmissionClient) GetDownloadDirectories(ctx context.Context) ([]utils.DirectoryInfo, error) {
+	torrents, err := c.GetTorrents(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Collect unique download directories
 	dirMap := make(map[string]int)
 	for _, t := range torrents {
 		dirMap[t.DownloadDir]++
 	}
 
-	// Convert to sorted slice
-	var dirs []utils.DirectoryInfo
+	dirs := make([]utils.DirectoryInfo, 0, len(dirMap))
 	for path, count := range dirMap {
 		cleanPath := utils.SanitizeString(path)
 		dirs = append(dirs, utils.DirectoryInfo{Path: cleanPath, Count: count})
 	}
 
-	// Sort by path using Go's built-in sort
 	sort.Slice(dirs, func(i, j int) bool {
 		return dirs[i].Path < dirs[j].Path
 	})
@@ -199,19 +228,19 @@ func (c *TransmissionClient) GetDownloadDirectories(ctx context.Context, session
 	return dirs, nil
 }
 
-// ListDownloadDirectories prints download directories (for backward compatibility)
-func (c *TransmissionClient) ListDownloadDirectories(ctx context.Context, sessionID string) error {
-	dirs, err := c.GetDownloadDirectories(ctx, sessionID)
-	if err != nil {
-		return err
-	}
+// Legacy methods for backward compatibility (deprecated)
+func (c *TransmissionClient) GetSessionIDLegacy(ctx context.Context) (string, error) {
+	return c.getSessionID(ctx)
+}
 
-	fmt.Printf("Download Directories in Transmission (%d unique):\n", len(dirs))
-	fmt.Println(strings.Repeat("-", constants.SeparatorWidth))
+func (c *TransmissionClient) GetTorrentsLegacy(ctx context.Context, sessionID string) ([]types.TorrentInfo, error) {
+	return c.GetTorrents(ctx)
+}
 
-	for _, d := range dirs {
-		fmt.Printf("%s (%d torrents)\n", d.Path, d.Count)
-	}
+func (c *TransmissionClient) GetAllTorrentPathsLegacy(ctx context.Context, sessionID string) ([]string, error) {
+	return c.GetAllTorrentPaths(ctx)
+}
 
-	return nil
+func (c *TransmissionClient) GetDownloadDirectoriesLegacy(ctx context.Context, sessionID string) ([]utils.DirectoryInfo, error) {
+	return c.GetDownloadDirectories(ctx)
 }
