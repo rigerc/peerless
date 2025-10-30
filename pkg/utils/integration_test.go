@@ -69,7 +69,7 @@ func TestFileOutputIntegration(t *testing.T) {
 			"/downloads/movies/Movie.2023.1080p.BluRay.x264",
 			"/downloads/tv/TV.Series.S01\u200E", // With LTR mark
 			"/downloads/documentaries/Nature.Doc.2024",
-			"/downloads/music/Album.2023\u200F",  // With RTL mark
+			"/downloads/music/Album.2023\u200F", // With RTL mark
 		}
 
 		// Write to file
@@ -202,9 +202,9 @@ func TestSpecialCharactersInPaths(t *testing.T) {
 		"/downloads/File<With>Brackets",
 		"/downloads/File?With?Question",
 		// Unicode characters (should be preserved)
-		"/downloads/电影.MOV", // Chinese characters
+		"/downloads/电影.MOV",    // Chinese characters
 		"/downloads/Фильм.MOV", // Cyrillic characters
-		"/downloads/فيلم.MOV", // Arabic characters
+		"/downloads/فيلم.MOV",  // Arabic characters
 	}
 
 	// Write to file

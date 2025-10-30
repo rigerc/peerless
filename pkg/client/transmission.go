@@ -83,7 +83,7 @@ func (c *TransmissionClient) getSessionID(ctx context.Context) (string, error) {
 func (c *TransmissionClient) fetchSessionID(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer([]byte("{}")))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	if c.config.User != "" {
@@ -117,12 +117,12 @@ func (c *TransmissionClient) doRequest(ctx context.Context, reqBody types.Transm
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request to JSON: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL(), bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -153,12 +153,12 @@ func (c *TransmissionClient) doRequest(ctx context.Context, reqBody types.Transm
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var result types.TransmissionResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	if result.Result != "success" {

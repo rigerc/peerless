@@ -42,7 +42,7 @@ type DirectoryResult struct {
 func (s *TorrentService) CheckDirectories(ctx context.Context, dirs []string) (*DirectoryCheckResult, error) {
 	torrents, err := s.client.GetTorrents(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get torrents: %w", err)
+		return nil, fmt.Errorf("failed to retrieve torrents: %w", err)
 	}
 
 	torrentMap := make(map[string]bool)
@@ -118,7 +118,7 @@ type TorrentStatistics struct {
 func (s *TorrentService) GetTorrentStatistics(ctx context.Context) (*TorrentStatistics, error) {
 	torrents, err := s.client.GetTorrents(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get torrents: %w", err)
+		return nil, fmt.Errorf("failed to retrieve torrents: %w", err)
 	}
 
 	stats := &TorrentStatistics{
@@ -146,7 +146,7 @@ type CompareResult struct {
 func (s *TorrentService) CompareLocalWithTransmission(ctx context.Context, dir string) (*CompareResult, error) {
 	torrentPaths, err := s.client.GetAllTorrentPaths(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get torrent paths: %w", err)
+		return nil, fmt.Errorf("failed to retrieve torrent paths: %w", err)
 	}
 
 	torrentMap := make(map[string]bool)

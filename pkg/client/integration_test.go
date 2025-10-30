@@ -15,13 +15,13 @@ import (
 // TestTransmissionClientIntegration tests the Transmission client with mock server
 func TestTransmissionClientIntegration(t *testing.T) {
 	tests := []struct {
-		name           string
-		authRequired   bool
-		username       string
-		password       string
-		expectSuccess  bool
-		expectedError  string
-		expectedCount  int
+		name          string
+		authRequired  bool
+		username      string
+		password      string
+		expectSuccess bool
+		expectedError string
+		expectedCount int
 	}{
 		{
 			name:          "Valid authentication",
@@ -35,7 +35,7 @@ func TestTransmissionClientIntegration(t *testing.T) {
 			name:          "Invalid authentication",
 			authRequired:  true,
 			username:      "admin",
-			password:      "wrong",     // What client sends
+			password:      "wrong", // What client sends
 			expectSuccess: false,
 			expectedError: "authentication failed",
 		},
@@ -181,9 +181,9 @@ func TestTransmissionClientIntegration(t *testing.T) {
 // TestTransmissionClientHTTPErrors tests HTTP error handling
 func TestTransmissionClientHTTPErrors(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		expectedError  string
+		name          string
+		statusCode    int
+		expectedError string
 	}{
 		{
 			name:          "401 Unauthorized",

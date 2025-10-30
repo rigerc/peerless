@@ -151,16 +151,16 @@ func TestDeleteFiles(t *testing.T) {
 
 		// Check results - files should definitely succeed, directory might fail due to filesystem issues
 		assert.GreaterOrEqual(t, result.SuccessCount, 2) // At least the 2 files should succeed
-		assert.LessOrEqual(t, result.FailedCount, 1)   // At most 1 failure (the directory)
+		assert.LessOrEqual(t, result.FailedCount, 1)     // At most 1 failure (the directory)
 		assert.GreaterOrEqual(t, len(result.Success), 2)
 
 		// Check progress tracking - all 3 paths should be processed
 		assert.Len(t, progressCalls, 3)
 		assert.Equal(t, 1, progressCalls[0].current)
 		assert.Equal(t, 3, progressCalls[0].total)
-		assert.Equal(t, 2, progressCalls[1].current)  // Second item processed
+		assert.Equal(t, 2, progressCalls[1].current) // Second item processed
 		assert.Equal(t, 3, progressCalls[1].total)
-		assert.Equal(t, 3, progressCalls[2].current)  // Third item processed
+		assert.Equal(t, 3, progressCalls[2].current) // Third item processed
 		assert.Equal(t, 3, progressCalls[2].total)
 
 		// Verify files are deleted

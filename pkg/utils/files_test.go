@@ -30,8 +30,8 @@ func TestGetSize(t *testing.T) {
 
 		// Create files in the directory
 		files := map[string][]byte{
-			"file1.txt": []byte("Hello"),
-			"file2.txt": []byte("World!"),
+			"file1.txt":        []byte("Hello"),
+			"file2.txt":        []byte("World!"),
 			"subdir/file3.txt": []byte("Test"),
 		}
 

@@ -11,21 +11,21 @@ import (
 
 // Color constants for better readability
 const (
-	ColorGreen  = lipgloss.Color("10")
-	ColorRed    = lipgloss.Color("9")
-	ColorYellow = lipgloss.Color("11")
-	ColorBlue   = lipgloss.Color("12")
+	ColorGreen   = lipgloss.Color("10")
+	ColorRed     = lipgloss.Color("9")
+	ColorYellow  = lipgloss.Color("11")
+	ColorBlue    = lipgloss.Color("12")
 	ColorMagenta = lipgloss.Color("13")
-	ColorCyan   = lipgloss.Color("14")
-	ColorGray   = lipgloss.Color("8")
-	ColorWhite  = lipgloss.Color("15")
+	ColorCyan    = lipgloss.Color("14")
+	ColorGray    = lipgloss.Color("8")
+	ColorWhite   = lipgloss.Color("15")
 )
 
 var (
 	// Color styles
 	SuccessStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(ColorGreen)
+			Bold(true).
+			Foreground(ColorGreen)
 
 	ErrorStyle = lipgloss.NewStyle().
 			Bold(true).

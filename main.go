@@ -85,8 +85,8 @@ func main() {
 				Action: runCheck,
 			},
 			{
-				Name:  "list-directories",
-				Usage: "List all download directories from Transmission",
+				Name:    "list-directories",
+				Usage:   "List all download directories from Transmission",
 				Aliases: []string{"ls-dirs", "ld"},
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -98,8 +98,8 @@ func main() {
 				Action: runListDirectories,
 			},
 			{
-				Name:  "list-torrents",
-				Usage: "List all torrent paths from Transmission",
+				Name:    "list-torrents",
+				Usage:   "List all torrent paths from Transmission",
 				Aliases: []string{"ls-torrents", "lt"},
 				Flags: []cli.Flag{
 					&cli.StringFlag{

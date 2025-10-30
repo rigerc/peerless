@@ -99,8 +99,8 @@ func TestTorrentService_CheckDirectories(t *testing.T) {
 		assert.Len(t, result.Directories, 1)
 		dirResult := result.Directories[0]
 		assert.Equal(t, tmpDir, dirResult.Path)
-		assert.Equal(t, 3, dirResult.TotalItems) // 3 files in directory
-		assert.Equal(t, 2, dirResult.FoundItems) // 2 files found in torrents
+		assert.Equal(t, 3, dirResult.TotalItems)        // 3 files in directory
+		assert.Equal(t, 2, dirResult.FoundItems)        // 2 files found in torrents
 		assert.Equal(t, 1, len(dirResult.MissingPaths)) // 1 file missing
 		assert.Contains(t, dirResult.MissingPaths, file3)
 
@@ -285,11 +285,11 @@ func TestTorrentService_CompareLocalWithTransmission(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify comparison results
-		assert.Equal(t, 2, result.TotalLocal)  // 2 local files
+		assert.Equal(t, 2, result.TotalLocal)        // 2 local files
 		assert.Equal(t, 2, result.TotalTransmission) // 2 torrent files
-		assert.Len(t, result.InBoth, 1)      // 1 file in both
-		assert.Len(t, result.LocalOnly, 1)   // 1 local-only file
-		assert.Len(t, result.InTransmissionOnly, 1) // 1 transmission-only file
+		assert.Len(t, result.InBoth, 1)              // 1 file in both
+		assert.Len(t, result.LocalOnly, 1)           // 1 local-only file
+		assert.Len(t, result.InTransmissionOnly, 1)  // 1 transmission-only file
 
 		// Check that the common file is identified correctly
 		absTorrentFile, _ := filepath.Abs(torrentFile)
