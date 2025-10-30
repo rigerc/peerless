@@ -251,6 +251,16 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 	totalMissingSize := int64(0)
 	var missingPaths []string
 
+	// Track missing sizes per directory for detailed summary
+	type DirectorySummary struct {
+		Path         string
+		MissingSize  int64
+		MissingCount int
+		TotalCount   int
+		FoundCount   int
+	}
+	var directorySummaries []DirectorySummary
+
 	// Check each directory
 	for dirIdx, dir := range dirs {
 		if dirIdx > 0 {
@@ -317,6 +327,16 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 		totalFound += found
 		totalMissingSize += missingSize
 
+		// Store directory summary for overall breakdown
+		missingCount := len(entries) - found
+		directorySummaries = append(directorySummaries, DirectorySummary{
+			Path:         dir,
+			MissingSize:  missingSize,
+			MissingCount: missingCount,
+			TotalCount:   len(entries),
+			FoundCount:   found,
+		})
+
 		output.Logger.Debug("Directory check completed",
 			"directory", dir,
 			"total", len(entries),
@@ -336,6 +356,26 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 			fmt.Print("Total missing items size: ")
 			output.PrintSize(utils.FormatSize(totalMissingSize))
 			fmt.Println()
+		}
+
+		// Show per-directory breakdown
+		fmt.Println()
+		output.PrintSummary("Per-Directory Breakdown:")
+		for _, dirSummary := range directorySummaries {
+			if dirSummary.MissingCount > 0 {
+				fmt.Printf("  %s: %d/%d missing (%.1f%%) - %s\n",
+					dirSummary.Path,
+					dirSummary.MissingCount,
+					dirSummary.TotalCount,
+					float64(dirSummary.MissingCount)/float64(dirSummary.TotalCount)*100,
+					utils.FormatSize(dirSummary.MissingSize))
+			} else {
+				fmt.Printf("  %s: %d/%d found (100%%) - %s\n",
+					dirSummary.Path,
+					dirSummary.TotalCount,
+					dirSummary.TotalCount,
+					utils.FormatSize(dirSummary.MissingSize))
+			}
 		}
 
 		output.Logger.Info("Overall check completed",
@@ -383,9 +423,20 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 				if info.IsDir() {
 					// Calculate directory size for display
 					if dirSize, err := utils.GetSize(path); err == nil {
-						sizeStr = fmt.Sprintf(" (%s, directory)", utils.FormatSize(dirSize))
+						if dirSize > 0 {
+							sizeStr = fmt.Sprintf(" (%s, directory)", utils.FormatSize(dirSize))
+						} else {
+							sizeStr = " (directory, empty or inaccessible)"
+						}
 					} else {
-						sizeStr = " (directory, size unknown)"
+						// Provide more specific error information
+						if os.IsPermission(err) {
+							sizeStr = " (directory, permission denied)"
+						} else if os.IsNotExist(err) {
+							sizeStr = " (directory, no longer exists)"
+						} else {
+							sizeStr = fmt.Sprintf(" (directory, error: %v)", err)
+						}
 					}
 				} else {
 					// Show file size
@@ -393,16 +444,26 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 				}
 				fmt.Printf("  %d. %s%s\n", i+1, path, sizeStr)
 			} else {
-				fmt.Printf("  %d. %s (error getting info)\n", i+1, path)
+				// Provide more specific error information for missing paths
+				if os.IsPermission(err) {
+					fmt.Printf("  %d. %s (permission denied)\n", i+1, path)
+				} else if os.IsNotExist(err) {
+					fmt.Printf("  %d. %s (no longer exists)\n", i+1, path)
+				} else {
+					fmt.Printf("  %d. %s (error: %v)\n", i+1, path, err)
+				}
 			}
 		}
 		fmt.Println()
 
 		// Calculate total size
 		var totalSize int64
+		var inaccessibleItems int
 		for _, path := range missingPaths {
 			if size, err := utils.GetSize(path); err == nil {
 				totalSize += size
+			} else {
+				inaccessibleItems++
 			}
 		}
 
@@ -410,7 +471,14 @@ func runCheck(ctx context.Context, cmd *cli.Command) error {
 		if dryRun {
 			actionText = "Total that would be deleted:"
 		}
-		fmt.Printf("%s %d items (%s)\n", actionText, len(missingPaths), utils.FormatSize(totalSize))
+
+		// Provide more informative total size display
+		if inaccessibleItems > 0 {
+			fmt.Printf("%s %d items (%s) - %d items inaccessible\n", actionText, len(missingPaths), utils.FormatSize(totalSize), inaccessibleItems)
+			fmt.Println("Note: Some items couldn't be sized due to permissions or other errors")
+		} else {
+			fmt.Printf("%s %d items (%s)\n", actionText, len(missingPaths), utils.FormatSize(totalSize))
+		}
 		fmt.Println()
 
 		if dryRun {
